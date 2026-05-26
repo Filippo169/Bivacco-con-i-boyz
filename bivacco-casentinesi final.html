@@ -1,0 +1,2712 @@
+<!DOCTYPE html>
+<html lang="it" data-night="false">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Foreste Casentinesi — Spedizione Bivacco</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500;600&family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+/* ═══════════════════════════════════════════════════════════
+   VARIABLES
+═══════════════════════════════════════════════════════════ */
+:root {
+  --bg:           #111111;
+  --forest:       #1D2B1F;
+  --forest-dk:    #2E3B2F;
+  --sand:         #D6C7A1;
+  --sand-dim:     rgba(214,199,161,0.55);
+  --sand-faint:   rgba(214,199,161,0.12);
+  --fire:         #FF7A00;
+  --fire-dim:     rgba(255,122,0,0.13);
+  --fire-faint:   rgba(255,122,0,0.07);
+  --border:       rgba(214,199,161,0.1);
+  --border-hi:    rgba(214,199,161,0.2);
+  --surface:      rgba(29,43,31,0.38);
+  --surface-hi:   rgba(46,59,47,0.45);
+  --green:        #5DBF7A;
+  --red:          #D45A5A;
+  --ttl:          'Bebas Neue', sans-serif;
+  --mono:         'IBM Plex Mono', monospace;
+  --body:         'Inter', sans-serif;
+}
+html.night {
+  --bg: #090909;
+  --fire-faint: rgba(255,122,0,0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESET + BASE
+═══════════════════════════════════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  background:var(--bg);
+  color:var(--sand);
+  font-family:var(--body);
+  font-size:15px;
+  line-height:1.65;
+  min-height:100dvh;
+  overflow-x:hidden;
+}
+a { color:var(--fire); text-decoration:none; }
+button { cursor:pointer; font-family:var(--body); }
+ul { padding-left:1.2rem; }
+li { margin-bottom:0.3rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   TOPO TEXTURE — fixed, GPU-accelerated, pointer-events none
+═══════════════════════════════════════════════════════════ */
+.topo-layer {
+  position:fixed; inset:0; z-index:0;
+  pointer-events:none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ccircle cx='60' cy='60' r='55' fill='none' stroke='%23D6C7A1' stroke-width='0.4' stroke-opacity='0.045'/%3E%3Ccircle cx='60' cy='60' r='42' fill='none' stroke='%23D6C7A1' stroke-width='0.4' stroke-opacity='0.033'/%3E%3Ccircle cx='60' cy='60' r='29' fill='none' stroke='%23D6C7A1' stroke-width='0.4' stroke-opacity='0.025'/%3E%3Ccircle cx='60' cy='60' r='17' fill='none' stroke='%23D6C7A1' stroke-width='0.35' stroke-opacity='0.018'/%3E%3C/svg%3E");
+  background-size:120px 120px;
+  transition:opacity 0.6s ease;
+}
+html.night .topo-layer { opacity:1.3; }
+
+/* ═══════════════════════════════════════════════════════════
+   GLASS UTILITY
+═══════════════════════════════════════════════════════════ */
+.glass {
+  background:var(--surface);
+  backdrop-filter:blur(18px) saturate(120%);
+  -webkit-backdrop-filter:blur(18px) saturate(120%);
+  border:1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(214,199,161,0.07),
+    0 8px 32px rgba(0,0,0,0.45);
+}
+.glass-hi {
+  background:var(--surface-hi);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border:1px solid var(--border-hi);
+  box-shadow:
+    inset 0 1px 0 rgba(214,199,161,0.1),
+    0 12px 40px rgba(0,0,0,0.5);
+}
+.fire-glass {
+  background:var(--fire-dim);
+  border:1px solid rgba(255,122,0,0.25);
+  box-shadow:
+    inset 0 1px 0 rgba(255,122,0,0.12),
+    0 0 32px var(--fire-faint);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   APP ROOT
+═══════════════════════════════════════════════════════════ */
+.app-root { position:relative; z-index:1; }
+
+/* ═══════════════════════════════════════════════════════════
+   STICKY HEADER
+═══════════════════════════════════════════════════════════ */
+.site-header {
+  position:sticky; top:0; z-index:200;
+  background:rgba(17,17,17,0.88);
+  backdrop-filter:blur(24px) saturate(110%);
+  -webkit-backdrop-filter:blur(24px) saturate(110%);
+  border-bottom:1px solid var(--border);
+  transition:background 0.6s ease;
+}
+html.night .site-header { background:rgba(9,9,9,0.92); }
+
+.header-top {
+  display:flex; align-items:center;
+  justify-content:space-between;
+  padding:14px 20px 10px;
+  gap:12px;
+}
+
+.brand-wrap { display:flex; flex-direction:column; gap:1px; }
+.brand-title {
+  font-family:var(--ttl);
+  font-size:1.45rem;
+  letter-spacing:0.04em;
+  line-height:1;
+  color:var(--sand);
+}
+.brand-title span { color:var(--fire); }
+.brand-sub {
+  font-family:var(--mono);
+  font-size:0.6rem;
+  color:var(--sand-dim);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+}
+
+.header-controls { display:flex; align-items:center; gap:10px; }
+
+.status-badge {
+  font-family:var(--mono);
+  font-size:0.58rem;
+  padding:4px 10px;
+  border-radius:20px;
+  background:var(--fire-dim);
+  border:1px solid rgba(255,122,0,0.3);
+  color:var(--fire);
+  letter-spacing:0.1em;
+  display:flex; align-items:center; gap:5px;
+}
+.status-dot {
+  width:5px; height:5px; border-radius:50%;
+  background:var(--fire);
+  animation:pulse-dot 2s ease infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity:1; transform:scale(1); }
+  50% { opacity:0.5; transform:scale(0.7); }
+}
+
+.night-btn {
+  width:34px; height:34px; border-radius:50%;
+  background:var(--sand-faint);
+  border:1px solid var(--border);
+  color:var(--sand-dim);
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.3s ease;
+}
+.night-btn:hover { border-color:var(--border-hi); color:var(--sand); }
+.night-btn svg { width:15px; height:15px; fill:currentColor; }
+
+/* NAV TABS */
+.main-nav {
+  display:flex; overflow-x:auto; scrollbar-width:none;
+  padding:0 20px;
+  gap:2px;
+}
+.main-nav::-webkit-scrollbar { display:none; }
+
+.nav-tab {
+  background:none; border:none;
+  border-bottom:2px solid transparent;
+  color:var(--sand-dim);
+  font-family:var(--mono);
+  font-size:0.65rem;
+  font-weight:500;
+  letter-spacing:0.08em;
+  padding:9px 14px 8px;
+  white-space:nowrap;
+  transition:all 0.25s ease;
+  border-radius:4px 4px 0 0;
+}
+.nav-tab:hover { color:var(--sand); background:var(--sand-faint); }
+.nav-tab.active {
+  color:var(--fire);
+  border-bottom-color:var(--fire);
+  background:var(--fire-faint);
+  font-weight:600;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════════════════════ */
+.hero-section {
+  min-height:92dvh;
+  display:grid;
+  grid-template-columns:1fr;
+  position:relative;
+  overflow:hidden;
+}
+@media(min-width:800px) {
+  .hero-section { grid-template-columns:1.15fr 0.85fr; min-height:88dvh; }
+}
+
+.hero-bg {
+  position:absolute; inset:0;
+  background:
+    radial-gradient(ellipse 70% 60% at 15% 50%, rgba(29,43,31,0.55) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 40% at 85% 70%, rgba(255,122,0,0.07) 0%, transparent 60%),
+    linear-gradient(160deg, rgba(29,43,31,0.3) 0%, transparent 50%);
+  pointer-events:none;
+}
+
+.hero-left {
+  display:flex; flex-direction:column;
+  justify-content:flex-end;
+  padding:60px 28px 52px;
+  position:relative;
+}
+@media(min-width:800px) {
+  .hero-left { padding:80px 40px 64px; justify-content:center; }
+}
+
+.hero-tag {
+  font-family:var(--mono);
+  font-size:0.62rem;
+  letter-spacing:0.14em;
+  color:var(--fire);
+  text-transform:uppercase;
+  margin-bottom:18px;
+  display:flex; align-items:center; gap:8px;
+}
+.hero-tag::before {
+  content:''; display:block;
+  width:24px; height:1px; background:var(--fire);
+}
+
+.hero-h1 {
+  font-family:var(--ttl);
+  font-size:clamp(4.5rem, 12vw, 9rem);
+  line-height:0.92;
+  letter-spacing:0.01em;
+  color:var(--sand);
+  margin-bottom:12px;
+}
+.hero-h1 .fire { color:var(--fire); }
+
+.hero-sub {
+  font-family:var(--mono);
+  font-size:0.72rem;
+  color:var(--sand-dim);
+  letter-spacing:0.06em;
+  line-height:1.8;
+  margin-bottom:36px;
+  max-width:400px;
+}
+
+.hero-stats {
+  display:flex; flex-wrap:wrap; gap:20px;
+}
+.h-stat { display:flex; flex-direction:column; gap:2px; }
+.h-stat-val {
+  font-family:var(--ttl);
+  font-size:2rem;
+  line-height:1;
+  color:var(--sand);
+}
+.h-stat-val.fire { color:var(--fire); }
+.h-stat-lbl {
+  font-family:var(--mono);
+  font-size:0.58rem;
+  color:var(--sand-dim);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+}
+
+/* HERO RIGHT — Expedition card */
+.hero-right {
+  display:flex; flex-direction:column;
+  justify-content:flex-end; align-items:flex-start;
+  padding:40px 28px 52px;
+  gap:16px;
+}
+@media(min-width:800px) {
+  .hero-right { justify-content:center; padding:80px 44px 64px 20px; }
+}
+
+.exp-card {
+  width:100%;
+  max-width:340px;
+  border-radius:16px;
+  padding:22px 24px;
+}
+
+.exp-card-header {
+  font-family:var(--mono);
+  font-size:0.6rem;
+  letter-spacing:0.14em;
+  color:var(--sand-dim);
+  text-transform:uppercase;
+  margin-bottom:14px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--border);
+}
+
+.countdown-grid {
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:8px;
+  margin-bottom:20px;
+}
+.cd-unit { display:flex; flex-direction:column; align-items:center; gap:3px; }
+.cd-num {
+  font-family:var(--ttl);
+  font-size:2.4rem;
+  line-height:1;
+  color:var(--fire);
+}
+.cd-lbl {
+  font-family:var(--mono);
+  font-size:0.52rem;
+  color:var(--sand-dim);
+  letter-spacing:0.1em;
+}
+
+.exp-meta { display:flex; flex-direction:column; gap:8px; }
+.exp-row {
+  display:flex; justify-content:space-between;
+  align-items:center;
+  font-family:var(--mono);
+  font-size:0.63rem;
+}
+.exp-row-lbl { color:var(--sand-dim); }
+.exp-row-val { color:var(--sand); }
+
+.team-mini {
+  display:flex; gap:8px; margin-top:16px; padding-top:16px;
+  border-top:1px solid var(--border);
+}
+.team-avatar {
+  width:36px; height:36px; border-radius:50%;
+  background:var(--forest-dk);
+  border:1.5px solid var(--border-hi);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--ttl);
+  font-size:1rem;
+  color:var(--fire);
+  position:relative;
+}
+.team-avatar span {
+  font-family:var(--mono);
+  font-size:0.42rem;
+  color:var(--sand-dim);
+  position:absolute;
+  bottom:-14px; left:50%;
+  transform:translateX(-50%);
+  white-space:nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SECTIONS CONTAINER
+═══════════════════════════════════════════════════════════ */
+.sections-wrap {
+  max-width:900px;
+  margin:0 auto;
+  padding:32px 18px 80px;
+}
+
+.section { display:none; }
+.section.active {
+  display:block;
+  animation:fadeInUp 0.4s ease;
+}
+@keyframes fadeInUp {
+  from { opacity:0; transform:translateY(10px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+/* SECTION HEADER */
+.sec-header {
+  margin-bottom:28px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:16px;
+}
+.sec-tag {
+  font-family:var(--mono);
+  font-size:0.58rem;
+  letter-spacing:0.16em;
+  color:var(--fire);
+  text-transform:uppercase;
+  margin-bottom:4px;
+  display:flex; align-items:center; gap:6px;
+}
+.sec-tag::before { content:''; width:16px; height:1px; background:var(--fire); }
+.sec-h2 {
+  font-family:var(--ttl);
+  font-size:clamp(3rem, 8vw, 5.5rem);
+  line-height:0.9;
+  letter-spacing:0.02em;
+  color:var(--sand);
+  margin-bottom:8px;
+}
+.sec-desc {
+  font-family:var(--body);
+  font-size:0.82rem;
+  color:var(--sand-dim);
+  max-width:500px;
+  line-height:1.7;
+}
+
+/* CARDS */
+.card {
+  border-radius:14px;
+  padding:18px 20px;
+  margin-bottom:14px;
+}
+.card-ttl {
+  font-family:var(--mono);
+  font-size:0.72rem;
+  font-weight:600;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  margin-bottom:12px;
+}
+.card p, .card li {
+  font-size:0.83rem;
+  color:var(--sand-dim);
+  line-height:1.7;
+}
+.card ul { margin-top:6px; }
+
+/* GRIDS */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:14px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:14px; }
+@media(max-width:580px) { .g2 { grid-template-columns:1fr; } }
+@media(max-width:480px) { .g3 { grid-template-columns:1fr 1fr; } }
+
+/* ALERTS */
+.alert-fire {
+  border-radius:14px; padding:18px 22px; margin-bottom:16px;
+  background:linear-gradient(135deg, rgba(212,90,90,0.12), rgba(180,50,50,0.08));
+  border:1px solid rgba(212,90,90,0.3);
+}
+.alert-fire h3 {
+  font-family:var(--mono); font-size:0.72rem;
+  font-weight:600; color:#E07575;
+  letter-spacing:0.08em; margin-bottom:8px;
+}
+.alert-fire p, .alert-fire li { color:#E09090; font-size:0.82rem; line-height:1.7; }
+
+.alert-amber {
+  border-radius:14px; padding:16px 20px; margin-bottom:14px;
+  background:var(--fire-faint);
+  border:1px solid rgba(255,122,0,0.2);
+}
+.alert-amber h3 {
+  font-family:var(--mono); font-size:0.7rem;
+  font-weight:600; color:var(--fire);
+  letter-spacing:0.08em; margin-bottom:6px;
+}
+.alert-amber p, .alert-amber li { color:rgba(255,170,80,0.85); font-size:0.82rem; line-height:1.7; }
+
+.alert-green {
+  border-radius:14px; padding:16px 20px; margin-bottom:14px;
+  background:rgba(93,191,122,0.08);
+  border:1px solid rgba(93,191,122,0.25);
+}
+.alert-green h3 {
+  font-family:var(--mono); font-size:0.7rem;
+  font-weight:600; color:var(--green);
+  letter-spacing:0.08em; margin-bottom:6px;
+}
+.alert-green p, .alert-green li { color:rgba(130,210,150,0.85); font-size:0.82rem; line-height:1.7; }
+
+/* STATUS TAGS */
+.legal-ok {
+  font-family:var(--mono); font-size:0.62rem;
+  font-weight:600; letter-spacing:0.08em;
+  padding:6px 12px; border-radius:6px; margin-bottom:14px; display:inline-block;
+  background:rgba(93,191,122,0.12); color:var(--green);
+  border:1px solid rgba(93,191,122,0.3);
+}
+.legal-warn {
+  font-family:var(--mono); font-size:0.62rem;
+  font-weight:600; letter-spacing:0.08em;
+  padding:6px 12px; border-radius:6px; margin-bottom:14px; display:inline-block;
+  background:var(--fire-faint); color:var(--fire);
+  border:1px solid rgba(255,122,0,0.3);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SPOT CARDS
+═══════════════════════════════════════════════════════════ */
+.spot-card {
+  border-radius:16px; margin-bottom:14px; overflow:hidden;
+  background:var(--surface);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(214,199,161,0.06), 0 4px 20px rgba(0,0,0,0.4);
+  transition:border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.spot-card:hover { border-color:var(--border-hi); }
+
+.spot-hd {
+  display:flex; align-items:flex-start; gap:14px;
+  padding:18px 20px; cursor:pointer;
+}
+.spot-num {
+  font-family:var(--ttl);
+  font-size:3rem; line-height:1;
+  flex-shrink:0; width:48px;
+}
+.spot-info { flex:1; min-width:0; }
+.spot-name {
+  font-family:var(--body);
+  font-size:0.95rem; font-weight:600;
+  color:var(--sand); margin-bottom:2px;
+}
+.spot-sub { font-size:0.75rem; color:var(--sand-dim); margin-bottom:8px; }
+.spot-tags { display:flex; flex-wrap:wrap; gap:5px; }
+.stag {
+  font-family:var(--mono); font-size:0.58rem;
+  padding:3px 8px; border-radius:20px;
+  background:var(--sand-faint); color:var(--sand-dim);
+  border:1px solid var(--border);
+  letter-spacing:0.04em;
+}
+.spot-meta { text-align:right; flex-shrink:0; }
+.spot-stars { font-size:0.75rem; margin-bottom:4px; }
+.star-on { color:var(--fire); }
+.star-off { color:rgba(214,199,161,0.2); }
+
+.fatigue-bar {
+  display:flex; gap:3px; justify-content:flex-end;
+  margin-top:4px;
+}
+.fb {
+  width:12px; height:4px; border-radius:2px;
+  background:rgba(214,199,161,0.12);
+}
+.fb.on { background:var(--fire); }
+.fb.on.lo { background:var(--green); }
+.fb.on.hi { background:var(--red); }
+
+.spot-toggle-txt {
+  font-family:var(--mono); font-size:0.58rem;
+  color:var(--sand-dim); margin-top:8px;
+  letter-spacing:0.06em;
+}
+
+.spot-body {
+  display:none;
+  border-top:1px solid var(--border);
+  padding:18px 20px;
+}
+.spot-body.open { display:block; animation:fadeInUp 0.3s ease; }
+
+.info-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px; margin-bottom:16px;
+}
+@media(max-width:480px) { .info-grid { grid-template-columns:1fr 1fr; } }
+
+.info-cell {
+  background:rgba(0,0,0,0.25);
+  border-radius:9px; padding:10px 12px;
+  border:1px solid var(--border);
+}
+.info-lbl {
+  font-family:var(--mono); font-size:0.55rem;
+  color:var(--sand-dim); letter-spacing:0.08em;
+  text-transform:uppercase; margin-bottom:3px;
+}
+.info-val {
+  font-family:var(--mono); font-size:0.73rem;
+  color:var(--sand); font-weight:500;
+}
+
+.pro-con { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+@media(max-width:420px) { .pro-con { grid-template-columns:1fr; } }
+.pro-label {
+  font-family:var(--mono); font-size:0.6rem;
+  font-weight:600; letter-spacing:0.08em;
+  margin-bottom:8px;
+}
+.pro-label.g { color:var(--green); }
+.pro-label.r { color:var(--red); }
+.pro-item { font-size:0.78rem; color:var(--sand-dim); line-height:1.6; }
+
+.spot-quote {
+  margin-top:14px;
+  padding:12px 16px;
+  border-left:3px solid;
+  border-radius:0 8px 8px 0;
+  background:rgba(0,0,0,0.2);
+  font-style:italic;
+  font-size:0.78rem; color:var(--sand-dim);
+  line-height:1.6;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPARISON TABLE
+═══════════════════════════════════════════════════════════ */
+.table-wrap { overflow-x:auto; border-radius:12px; border:1px solid var(--border); margin-bottom:20px; }
+table { width:100%; border-collapse:collapse; font-size:0.75rem; min-width:580px; }
+thead th {
+  font-family:var(--mono); font-size:0.6rem;
+  font-weight:600; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--sand-dim);
+  padding:12px 14px; text-align:left;
+  background:rgba(0,0,0,0.3);
+  border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+tbody td {
+  padding:10px 14px;
+  color:var(--sand-dim);
+  border-bottom:1px solid rgba(214,199,161,0.05);
+  font-family:var(--mono);
+}
+tbody tr:last-child td { border-bottom:none; }
+tbody tr:hover td { background:rgba(214,199,161,0.03); }
+.td-name { color:var(--sand); font-weight:500; }
+.td-fire { color:var(--fire); }
+.td-green { color:var(--green); }
+.td-red { color:var(--red); }
+
+/* BEST PICKS */
+.picks-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px; }
+@media(max-width:500px) { .picks-grid { grid-template-columns:1fr; } }
+.pick-card {
+  border-radius:12px; padding:14px 16px;
+}
+.pick-label {
+  font-family:var(--mono); font-size:0.58rem;
+  font-weight:600; letter-spacing:0.1em;
+  text-transform:uppercase; margin-bottom:4px;
+  color:var(--fire);
+}
+.pick-name {
+  font-size:0.88rem; font-weight:600; color:var(--sand);
+  margin-bottom:2px;
+}
+.pick-desc { font-size:0.75rem; color:var(--sand-dim); }
+
+/* ═══════════════════════════════════════════════════════════
+   MAP + ROUTE SECTION
+═══════════════════════════════════════════════════════════ */
+#map-container {
+  height:360px; border-radius:14px; overflow:hidden;
+  border:1px solid var(--border); margin-bottom:16px;
+}
+@media(min-width:700px) { #map-container { height:440px; } }
+
+.leaflet-container { background:#111; }
+
+.elevation-wrap {
+  border-radius:14px; padding:20px 18px;
+  margin-bottom:14px;
+  border:1px solid var(--border);
+  background:var(--surface);
+}
+.el-header {
+  font-family:var(--mono); font-size:0.62rem;
+  font-weight:600; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--fire);
+  margin-bottom:12px;
+}
+
+/* WEATHER CARD */
+.weather-card {
+  border-radius:14px; padding:20px 22px; margin-bottom:14px;
+}
+.wx-row { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.wx-temp {
+  font-family:var(--ttl);
+  font-size:3.5rem; line-height:1;
+  color:var(--sand);
+}
+.wx-icon { width:52px; height:52px; flex-shrink:0; }
+.wx-desc { font-size:0.82rem; color:var(--sand-dim); }
+.wx-grid {
+  display:grid; grid-template-columns:1fr 1fr 1fr;
+  gap:8px;
+}
+.wx-cell {
+  font-family:var(--mono);
+  display:flex; flex-direction:column; gap:2px;
+}
+.wx-cell-lbl { font-size:0.55rem; color:var(--sand-dim); letter-spacing:0.08em; }
+.wx-cell-val { font-size:0.78rem; color:var(--sand); font-weight:500; }
+.wx-loc {
+  font-family:var(--mono); font-size:0.6rem;
+  color:var(--sand-dim); letter-spacing:0.08em;
+  margin-top:12px; padding-top:10px;
+  border-top:1px solid var(--border);
+}
+
+/* TIMELINE */
+.timeline { margin-bottom:20px; }
+.tl-item {
+  display:flex; gap:12px; margin-bottom:8px; align-items:flex-start;
+}
+.tl-time {
+  font-family:var(--mono); font-size:0.62rem;
+  color:var(--sand-dim); min-width:62px;
+  text-align:right; padding-top:6px;
+}
+.tl-connector {
+  display:flex; flex-direction:column;
+  align-items:center; flex-shrink:0;
+}
+.tl-dot {
+  width:9px; height:9px; border-radius:50%;
+  margin-top:5px; flex-shrink:0;
+}
+.tl-line {
+  width:2px; flex:1; min-height:16px;
+  margin-top:2px; border-radius:1px; opacity:0.35;
+}
+.tl-body {
+  flex:1; border-radius:9px; padding:9px 13px;
+  background:rgba(0,0,0,0.25); border-left:2px solid;
+  margin-bottom:4px;
+}
+.tl-title {
+  font-size:0.8rem; font-weight:600; margin-bottom:2px; color:var(--sand);
+}
+.tl-desc { font-size:0.76rem; color:var(--sand-dim); line-height:1.55; }
+
+/* ═══════════════════════════════════════════════════════════
+   GEAR / KIT
+═══════════════════════════════════════════════════════════ */
+.gear-section-head {
+  font-family:var(--mono); font-size:0.62rem;
+  font-weight:600; letter-spacing:0.12em;
+  text-transform:uppercase; padding:0 0 10px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:10px; color:var(--fire);
+}
+.gear-row {
+  display:grid;
+  grid-template-columns:2.2fr 0.6fr 2fr 0.8fr;
+  gap:10px; padding:9px 0;
+  border-bottom:1px solid rgba(214,199,161,0.04);
+  align-items:start; font-size:0.78rem;
+}
+@media(max-width:540px) {
+  .gear-row { grid-template-columns:1fr 0.5fr; }
+  .gear-note, .gear-who { grid-column:span 2; }
+}
+.gear-row:last-child { border-bottom:none; }
+.gear-item { color:var(--sand); }
+.gear-weight { font-family:var(--mono); font-size:0.72rem; color:var(--green); white-space:nowrap; }
+.gear-note { color:var(--sand-dim); line-height:1.45; }
+.gear-who { font-family:var(--mono); font-size:0.65rem; color:var(--fire); }
+
+.weight-bar-wrap {
+  margin-top:16px; padding-top:14px;
+  border-top:1px solid var(--border);
+}
+.weight-bar-lbl {
+  display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:0.62rem;
+  color:var(--sand-dim); margin-bottom:6px;
+}
+.weight-bar-track {
+  height:4px; border-radius:2px;
+  background:rgba(214,199,161,0.1);
+  overflow:hidden;
+}
+.weight-bar-fill {
+  height:100%; border-radius:2px;
+  background:linear-gradient(90deg, var(--green), var(--fire));
+  transition:width 1s ease;
+}
+
+/* CHECKLIST */
+.checklist {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:7px; margin-bottom:16px;
+}
+@media(max-width:480px) { .checklist { grid-template-columns:1fr; } }
+.check-item {
+  font-family:var(--mono); font-size:0.72rem;
+  color:var(--sand-dim); padding:8px 12px;
+  border-radius:8px;
+  background:rgba(0,0,0,0.2);
+  border:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+}
+.check-item::before {
+  content:'';
+  width:14px; height:14px; flex-shrink:0;
+  border-radius:3px;
+  background:rgba(93,191,122,0.2);
+  border:1.5px solid var(--green);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6l3 3 5-5' stroke='%235DBF7A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-size:10px; background-repeat:no-repeat; background-position:center;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SAFETY
+═══════════════════════════════════════════════════════════ */
+.risk-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:14px; }
+@media(max-width:580px) { .risk-grid { grid-template-columns:1fr 1fr; } }
+.risk-cell {
+  border-radius:11px; padding:13px 14px;
+  text-align:center;
+}
+.risk-icon { font-size:1.4rem; margin-bottom:6px; }
+.risk-name { font-size:0.72rem; font-weight:600; color:var(--sand); margin-bottom:3px; }
+.risk-val { font-family:var(--mono); font-size:0.62rem; color:var(--sand-dim); }
+
+/* DANGER LEVEL BAR */
+.danger-bar { display:flex; gap:3px; justify-content:center; margin-top:5px; }
+.db { width:10px; height:3px; border-radius:2px; background:rgba(214,199,161,0.12); }
+.db.lo { background:var(--green); }
+.db.md { background:var(--fire); }
+.db.hi { background:var(--red); }
+
+/* FAUNA TABLE */
+.fauna-item {
+  display:flex; align-items:flex-start; gap:12px;
+  padding:12px 0; border-bottom:1px solid rgba(214,199,161,0.05);
+}
+.fauna-item:last-child { border-bottom:none; }
+.fauna-name { font-size:0.82rem; font-weight:600; color:var(--sand); margin-bottom:2px; }
+.fauna-desc { font-size:0.76rem; color:var(--sand-dim); line-height:1.55; }
+
+/* ═══════════════════════════════════════════════════════════
+   EPIC
+═══════════════════════════════════════════════════════════ */
+.quote-block {
+  border-radius:12px; padding:18px 20px;
+  margin-bottom:12px;
+  background:rgba(0,0,0,0.25);
+  border-left:3px solid var(--fire);
+}
+.quote-text { font-style:italic; font-size:0.83rem; color:var(--sand-dim); line-height:1.7; margin-bottom:8px; }
+.quote-src { font-family:var(--mono); font-size:0.6rem; color:var(--sand-dim); letter-spacing:0.06em; }
+
+/* ═══════════════════════════════════════════════════════════
+   DON'TS
+═══════════════════════════════════════════════════════════ */
+.dont-item {
+  display:flex; align-items:flex-start; gap:14px;
+  padding:14px 16px; border-radius:12px; margin-bottom:10px;
+  background:linear-gradient(135deg, rgba(212,90,90,0.07), rgba(160,40,40,0.04));
+  border:1px solid rgba(212,90,90,0.18);
+}
+.dont-num {
+  font-family:var(--ttl); font-size:2rem;
+  color:rgba(212,90,90,0.35); line-height:1;
+  flex-shrink:0; min-width:32px;
+}
+.dont-title { font-size:0.85rem; font-weight:600; color:var(--red); margin-bottom:4px; }
+.dont-desc { font-size:0.78rem; color:var(--sand-dim); line-height:1.55; }
+
+/* ═══════════════════════════════════════════════════════════
+   TEAM SECTION
+═══════════════════════════════════════════════════════════ */
+.team-grid {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+@media(max-width:540px) { .team-grid { grid-template-columns:1fr; } }
+
+.team-card {
+  border-radius:16px; padding:22px 20px;
+  overflow:hidden; position:relative;
+}
+.team-card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:3px;
+  background:linear-gradient(90deg, var(--accent-c), transparent);
+}
+.tc-avatar {
+  width:52px; height:52px; border-radius:50%;
+  background:var(--forest-dk);
+  border:2px solid var(--accent-c);
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--ttl); font-size:1.6rem;
+  color:var(--accent-c);
+  margin-bottom:14px;
+  box-shadow:0 0 20px var(--accent-c-dim);
+}
+.tc-nickname {
+  font-family:var(--ttl);
+  font-size:2.2rem; line-height:1;
+  color:var(--sand); margin-bottom:2px;
+}
+.tc-role {
+  font-family:var(--mono); font-size:0.6rem;
+  color:var(--accent-c); letter-spacing:0.1em;
+  text-transform:uppercase; margin-bottom:10px;
+}
+.tc-bio { font-style:italic; font-size:0.76rem; color:var(--sand-dim); line-height:1.6; margin-bottom:16px; }
+
+.stats-wrap { display:flex; flex-direction:column; gap:8px; }
+.stat-row { display:flex; flex-direction:column; gap:4px; }
+.stat-hd {
+  display:flex; justify-content:space-between;
+  font-family:var(--mono); font-size:0.58rem;
+  color:var(--sand-dim); letter-spacing:0.06em;
+}
+.stat-track {
+  height:3px; border-radius:2px;
+  background:rgba(214,199,161,0.1); overflow:hidden;
+}
+.stat-fill {
+  height:100%; border-radius:2px;
+  background:var(--accent-c);
+  width:0; transition:width 1.2s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PLAN SECTION
+═══════════════════════════════════════════════════════════ */
+.plan-hero {
+  border-radius:16px; padding:24px; margin-bottom:20px;
+}
+.plan-rec {
+  font-family:var(--ttl); font-size:1.6rem;
+  color:var(--sand); margin-bottom:6px; line-height:1.1;
+}
+.plan-rec span { color:var(--fire); }
+
+/* ═══════════════════════════════════════════════════════════
+   UTILITIES
+═══════════════════════════════════════════════════════════ */
+.mono { font-family:var(--mono); }
+.fire-c { color:var(--fire); }
+.green-c { color:var(--green); }
+.red-c { color:var(--red); }
+.muted { color:var(--sand-dim); }
+.fw6 { font-weight:600; }
+.fs-sm { font-size:0.8rem; }
+.mt8 { margin-top:8px; }
+.mt12 { margin-top:12px; }
+.mb8 { margin-bottom:8px; }
+.mb14 { margin-bottom:14px; }
+.mb20 { margin-bottom:20px; }
+.divider { height:1px; background:var(--border); margin:20px 0; }
+
+/* Scroll bar minimal */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:rgba(214,199,161,0.2); border-radius:3px; }
+</style>
+</head>
+
+<body>
+
+<!-- TOPO MAP TEXTURE OVERLAY -->
+<div class="topo-layer" aria-hidden="true"></div>
+
+<div class="app-root">
+
+<!-- ═══════════════════════════════════════════════════════
+     STICKY HEADER
+═══════════════════════════════════════════════════════ -->
+<header class="site-header">
+  <div class="header-top">
+    <div class="brand-wrap">
+      <div class="brand-title">FORESTE <span>CASENTINESI</span></div>
+      <div class="brand-sub">Spedizione Bivacco — 4 persone — 1658m</div>
+    </div>
+    <div class="header-controls">
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        PIANIFICAZIONE
+      </div>
+      <button class="night-btn" id="nightToggle" onclick="toggleNight()" title="Modalità notte">
+        <svg id="nightIcon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
+  </div>
+  <nav class="main-nav">
+    <button class="nav-tab active" onclick="showSec('s-allerta',this)">ALLERTA</button>
+    <button class="nav-tab" onclick="showSec('s-spots',this)">TOP 5 SPOT</button>
+    <button class="nav-tab" onclick="showSec('s-compare',this)">TABELLA</button>
+    <button class="nav-tab" onclick="showSec('s-route',this)">PERCORSO</button>
+    <button class="nav-tab" onclick="showSec('s-kit',this)">KIT</button>
+    <button class="nav-tab" onclick="showSec('s-safety',this)">SICUREZZA</button>
+    <button class="nav-tab" onclick="showSec('s-epic',this)">EPICO</button>
+    <button class="nav-tab" onclick="showSec('s-donts',this)">NON FARE</button>
+    <button class="nav-tab" onclick="showSec('s-plan',this)">PIANO</button>
+    <button class="nav-tab" onclick="showSec('s-team',this)">TEAM</button>
+  </nav>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════
+     HERO
+═══════════════════════════════════════════════════════ -->
+<section class="hero-section">
+  <div class="hero-bg" aria-hidden="true"></div>
+
+  <div class="hero-left">
+    <div class="hero-tag">Spedizione 01 — Emilia-Romagna</div>
+    <h1 class="hero-h1">FORESTE<br><span class="fire">CASEN</span><br>TINESI</h1>
+    <div class="hero-sub">
+      Passo della Calla → Monte Falco 1658m<br>
+      GEA Sentiero 00 — Crinale Tosco-Romagnolo<br>
+      Bivacco notturno — Alba sull'Adriatico
+    </div>
+    <div class="hero-stats">
+      <div class="h-stat">
+        <div class="h-stat-val fire">1658</div>
+        <div class="h-stat-lbl">Quota vetta</div>
+      </div>
+      <div class="h-stat">
+        <div class="h-stat-val">3.5</div>
+        <div class="h-stat-lbl">KM in salita</div>
+      </div>
+      <div class="h-stat">
+        <div class="h-stat-val">+350</div>
+        <div class="h-stat-lbl">Dislivello (m)</div>
+      </div>
+      <div class="h-stat">
+        <div class="h-stat-val fire">4</div>
+        <div class="h-stat-lbl">Spedizionieri</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hero-right">
+    <!-- COUNTDOWN CARD -->
+    <div class="exp-card glass-hi" style="border-radius:16px;">
+      <div class="exp-card-header">CONTO ALLA ROVESCIA — SPEDIZIONE</div>
+      <div class="countdown-grid" id="cdGrid">
+        <div class="cd-unit"><div class="cd-num" id="cd-d">—</div><div class="cd-lbl">giorni</div></div>
+        <div class="cd-unit"><div class="cd-num" id="cd-h">—</div><div class="cd-lbl">ore</div></div>
+        <div class="cd-unit"><div class="cd-num" id="cd-m">—</div><div class="cd-lbl">min</div></div>
+        <div class="cd-unit"><div class="cd-num" id="cd-s">—</div><div class="cd-lbl">sec</div></div>
+      </div>
+      <div class="exp-meta">
+        <div class="exp-row">
+          <span class="exp-row-lbl">Partenza</span>
+          <span class="exp-row-val">Ravenna → 13:30</span>
+        </div>
+        <div class="exp-row">
+          <span class="exp-row-lbl">Arrivo vetta</span>
+          <span class="exp-row-val">17:30 est.</span>
+        </div>
+        <div class="exp-row">
+          <span class="exp-row-lbl">Alba</span>
+          <span class="exp-row-val">05:30 · Adriatico</span>
+        </div>
+        <div class="exp-row">
+          <span class="exp-row-lbl">Mezzo</span>
+          <span class="exp-row-val">Auto / Moto</span>
+        </div>
+        <div class="exp-row">
+          <span class="exp-row-lbl">Distanza</span>
+          <span class="exp-row-val">~105 km da Ravenna</span>
+        </div>
+      </div>
+      <div class="team-mini">
+        <div class="team-avatar">C<span>CAMPO</span></div>
+        <div class="team-avatar" style="color:#5DBF7A;border-color:rgba(93,191,122,0.4);">T<span>TOZZI</span></div>
+        <div class="team-avatar" style="color:#B08AFF;border-color:rgba(176,138,255,0.4);">G<span>GALLA</span></div>
+        <div class="team-avatar" style="color:#4DBFCF;border-color:rgba(77,191,207,0.4);">M<span>MONI</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════
+     SECTIONS
+═══════════════════════════════════════════════════════ -->
+<main class="sections-wrap">
+
+<!-- ─── ALLERTA / LEGALITÀ ─── -->
+<div class="section active" id="s-allerta">
+  <div class="sec-header">
+    <div class="sec-tag">Attenzione</div>
+    <h2 class="sec-h2">LEGALITÀ</h2>
+    <p class="sec-desc">Leggi questa sezione prima di qualsiasi pianificazione. Le informazioni qui sono aggiornate e critiche per evitare sanzioni.</p>
+  </div>
+
+  <div class="alert-fire">
+    <h3>CAMPEGGIO LIBERO VIETATO NEL PARCO NAZIONALE</h3>
+    <p>Il Regolamento del Parco Nazionale delle Foreste Casentinesi vieta il campeggio con tenda al di fuori dei campeggi regolarmente autorizzati. Sanzioni previste oltre <strong>€1.000</strong>. Fuochi: fino a <strong>€3.000</strong> aggiuntivi.</p>
+  </div>
+
+  <div class="g2">
+    <div class="card glass" style="border-color:rgba(93,191,122,0.25);">
+      <div class="card-ttl green-c">Consentito</div>
+      <ul>
+        <li>Dormire nei bivacchi/rifugi ufficiali (es. San Paolo in Alpe)</li>
+        <li>Tenda fuori al rifugio SE: struttura aperta + piena + max 2 tende + 1h dopo tramonto fino all'alba</li>
+        <li>Bivacco in zone al confine/esterno del parco (verificare)</li>
+        <li>Sosta notturna con tarp/bivy bag — zona grigia storicamente tollerata</li>
+      </ul>
+    </div>
+    <div class="card glass" style="border-color:rgba(212,90,90,0.25);">
+      <div class="card-ttl red-c">Vietato</div>
+      <ul>
+        <li>Tenda in qualsiasi punto del parco lontano da rifugi</li>
+        <li>Qualsiasi tipo di fuoco (anche fornello a legna)</li>
+        <li>Raccogliere piante, funghi, materiali naturali senza permesso</li>
+        <li>Accedere a Sasso Fratino (riserva integrale UNESCO)</li>
+        <li>Abbandonare qualsiasi tipo di rifiuto</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card glass" style="border-color:rgba(255,122,0,0.25);">
+    <div class="card-ttl fire-c">La Strategia per Voi — Due Opzioni</div>
+    <div class="g2 mt8">
+      <div>
+        <p class="fw6" style="color:var(--fire); margin-bottom:6px; font-size:0.82rem;">OPZIONE A — 100% Legale</p>
+        <p>Prenotate il Bivacco San Paolo in Alpe tramite Tour de Bosc. Struttura con tetto, panorama ottimo, fauna spettacolare. Nessun pensiero, nessun rischio.</p>
+      </div>
+      <div>
+        <p class="fw6" style="color:var(--fire); margin-bottom:6px; font-size:0.82rem;">OPZIONE B — Zona Grigia</p>
+        <p>Bivaccare sul crinale (Passo Calla → Falco) con tarp o bivy invece della tenda classica. Comportamento low-profile, nessun fuoco, nessun rumore, Leave No Trace assoluto.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert-amber mt12">
+    <h3>Distinzione Bivacco vs Campeggio</h3>
+    <p>Il "bivacco" (sosta notturna senza attrezzatura stabile) è storicamente distinto dal "campeggio" in Italia. In Emilia-Romagna non esiste legge regionale che vieti esplicitamente il bivacco — il divieto principale vale per il regolamento del Parco Nazionale. Fuori dal perimetro del parco, la situazione è più tollerata. Contattare il Parco per chiarimenti è sempre consigliato.</p>
+  </div>
+
+  <div class="card glass mt12">
+    <div class="card-ttl">Fuochi — Regole Stagionali</div>
+    <ul>
+      <li><span class="red-c fw6">VIETATO sempre</span> dentro il Parco Nazionale in qualsiasi stagione</li>
+      <li><span class="fire-c fw6">Periodo rosso</span> — luglio/agosto: divieto regionale assoluto in Emilia-Romagna e Toscana</li>
+      <li><span class="green-c fw6">Fuori dal parco</span> — verificare ordinanze comunali in corso</li>
+      <li>Il fornello a gas chiuso (cartuccia sigillata) è sempre permesso ovunque</li>
+    </ul>
+  </div>
+
+  <div class="card glass mt8" style="border-color:rgba(93,191,122,0.2);">
+    <div class="card-ttl green-c">Contatti Utili</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+      <div>
+        <p class="mono" style="font-size:0.7rem; color:var(--fire);">PARCO NAZIONALE</p>
+        <p class="fs-sm">Tel: 0575 50301</p>
+        <p class="fs-sm">parcofoco@casentinesi.it</p>
+      </div>
+      <div>
+        <p class="mono" style="font-size:0.7rem; color:var(--fire);">EMERGENZA</p>
+        <p class="fs-sm">Soccorso Alpino: 118</p>
+        <p class="fs-sm">Carabinieri: 112</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TOP 5 SPOT ─── -->
+<div class="section" id="s-spots">
+  <div class="sec-header">
+    <div class="sec-tag">Analisi completa</div>
+    <h2 class="sec-h2">TOP 5<br>SPOT</h2>
+    <p class="sec-desc">Ogni spot analizzato per quota, panorama, legalità, fatica e fattori di rischio reali. Tocca per espandere i dettagli.</p>
+  </div>
+
+  <!-- ── SPOT 1 ── -->
+  <div class="spot-card" id="sc1" style="border-color:rgba(255,122,0,0.35);">
+    <div class="spot-hd" onclick="toggleSpot(1)">
+      <div class="spot-num" style="color:var(--fire);">01</div>
+      <div class="spot-info">
+        <div class="spot-name">Pian dei Fangacci → Monte Falco</div>
+        <div class="spot-sub">La vetta — il tetto della Romagna — 1658m</div>
+        <div class="spot-tags">
+          <span class="stag" style="color:var(--fire);border-color:rgba(255,122,0,0.3);">WOW ASSOLUTO</span>
+          <span class="stag">1658 m</span>
+          <span class="stag">1h 30' dal parcheggio</span>
+          <span class="stag">Fonte Borbotto -1km</span>
+        </div>
+      </div>
+      <div class="spot-meta">
+        <div class="spot-stars">
+          <span class="star-on">★★★★★</span>
+        </div>
+        <div class="fatigue-bar">
+          <div class="fb on md"></div><div class="fb on md"></div><div class="fb on md"></div><div class="fb"></div><div class="fb"></div>
+        </div>
+        <div class="spot-toggle-txt" id="arr1">▼ dettagli</div>
+      </div>
+    </div>
+    <div class="spot-body" id="sb1">
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-lbl">Coordinate</div><div class="info-val">43°53'N 11°43'E</div></div>
+        <div class="info-cell"><div class="info-lbl">Dal parcheggio</div><div class="info-val">3.5 km</div></div>
+        <div class="info-cell"><div class="info-lbl">Dislivello</div><div class="info-val">+350 m</div></div>
+        <div class="info-cell"><div class="info-lbl">Segnale</div><div class="info-val">Parziale TIM/Voda</div></div>
+        <div class="info-cell"><div class="info-lbl">Rischio pioggia</div><div class="info-val" style="color:var(--red);">Alto (crinale)</div></div>
+        <div class="info-cell"><div class="info-lbl">Affollamento</div><div class="info-val">Medio</div></div>
+        <div class="info-cell"><div class="info-lbl">Alba</div><div class="info-val star-on">★★★★★</div></div>
+        <div class="info-cell"><div class="info-lbl">Tramonto</div><div class="info-val star-on">★★★★★</div></div>
+        <div class="info-cell"><div class="info-lbl">Terreno tenda</div><div class="info-val">Prato, vento forte</div></div>
+      </div>
+      <div class="legal-warn">ZONA GRIGIA — solo tenda se Rifugio Le Fontanelle è aperto e pieno</div>
+      <div class="pro-con">
+        <div>
+          <div class="pro-label g">PRO</div>
+          <div class="pro-item">+ Vista 360° sulla catena appenninica<br>+ Adriatico e Alpi nelle giornate limpide<br>+ Tramonto cinematografico sul Mugello<br>+ Bramiti dei cervi al tramonto in settembre<br>+ Parcheggio diretto al Passo della Calla</div>
+        </div>
+        <div>
+          <div class="pro-label r">CONTRO</div>
+          <div class="pro-item">- Vento notturno forte sul crinale aperto<br>- Nessuna protezione naturale per la tenda<br>- Legalmente zona grigia nel parco<br>- Temporali estivi improvvisi e violenti</div>
+        </div>
+      </div>
+      <div class="spot-quote" style="border-color:var(--fire);">
+        "Il posto WOW assoluto. Tenda sul versante toscano (più riparato). Contatta il Rifugio Le Fontanelle prima di partire — se è aperto e pieno, il bivacco esterno è tollerato."
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPOT 2 ── -->
+  <div class="spot-card" id="sc2" style="border-color:rgba(93,191,122,0.3);">
+    <div class="spot-hd" onclick="toggleSpot(2)">
+      <div class="spot-num" style="color:var(--green);">02</div>
+      <div class="spot-info">
+        <div class="spot-name">San Paolo in Alpe</div>
+        <div class="spot-sub">Il bivacco ufficiale — legale, prenotabile, panoramico</div>
+        <div class="spot-tags">
+          <span class="stag" style="color:var(--green);border-color:rgba(93,191,122,0.3);">MIGLIOR PRINCIPIANTI</span>
+          <span class="stag">1030 m</span>
+          <span class="stag">1h 45' a piedi</span>
+          <span class="stag">Acqua interna</span>
+        </div>
+      </div>
+      <div class="spot-meta">
+        <div class="spot-stars"><span class="star-on">★★★★</span><span class="star-off">★</span></div>
+        <div class="fatigue-bar">
+          <div class="fb on lo"></div><div class="fb on lo"></div><div class="fb on lo"></div><div class="fb"></div><div class="fb"></div>
+        </div>
+        <div class="spot-toggle-txt" id="arr2">▼ dettagli</div>
+      </div>
+    </div>
+    <div class="spot-body" id="sb2">
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-lbl">Coordinate</div><div class="info-val">43°51'N 11°52'E</div></div>
+        <div class="info-cell"><div class="info-lbl">Dal parcheggio</div><div class="info-val">4 km</div></div>
+        <div class="info-cell"><div class="info-lbl">Dislivello</div><div class="info-val">+400 m</div></div>
+        <div class="info-cell"><div class="info-lbl">Segnale</div><div class="info-val">Debole</div></div>
+        <div class="info-cell"><div class="info-lbl">Rischio pioggia</div><div class="info-val">Medio</div></div>
+        <div class="info-cell"><div class="info-lbl">Affollamento</div><div class="info-val">Basso</div></div>
+        <div class="info-cell"><div class="info-lbl">Alba</div><div class="info-val star-on">★★★★<span class="star-off">★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Tramonto</div><div class="info-val star-on">★★★★<span class="star-off">★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Terreno</div><div class="info-val">Altopiano prativo</div></div>
+      </div>
+      <div class="legal-ok">LEGALE — bivacco gestito con prenotazione (Tour de Bosc)</div>
+      <div class="pro-con">
+        <div>
+          <div class="pro-label g">PRO</div>
+          <div class="pro-item">+ 100% legale, struttura con tetto<br>+ Vista Sasso Fratino UNESCO<br>+ Daini e cervi nella radura<br>+ Accessibile in auto fino a Fiumari<br>+ Acqua corrente disponibile</div>
+        </div>
+        <div>
+          <div class="pro-label r">CONTRO</div>
+          <div class="pro-item">- Non sul crinale — panorama parziale<br>- Richiede prenotazione anticipata<br>- Meno "selvaggio" degli altri spot<br>- Quota più bassa</div>
+        </div>
+      </div>
+      <div class="spot-quote" style="border-color:var(--green);">
+        "La scelta intelligente per chi ha poca esperienza di bivacco. Dormire dentro (prenotazione) o in tenda esterna quando la struttura è aperta e segnalata piena."
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPOT 3 ── -->
+  <div class="spot-card" id="sc3" style="border-color:rgba(176,138,255,0.3);">
+    <div class="spot-hd" onclick="toggleSpot(3)">
+      <div class="spot-num" style="color:#B08AFF;">03</div>
+      <div class="spot-info">
+        <div class="spot-name">Poggio Scali — La Giogana</div>
+        <div class="spot-sub">Il crinale citato da Dante — mistico, isolato, 1520m</div>
+        <div class="spot-tags">
+          <span class="stag" style="color:#B08AFF;border-color:rgba(176,138,255,0.3);">PIU' ISOLATA</span>
+          <span class="stag">1520 m</span>
+          <span class="stag">2h dal parcheggio</span>
+          <span class="stag">Portare tutta l'acqua</span>
+        </div>
+      </div>
+      <div class="spot-meta">
+        <div class="spot-stars"><span class="star-on">★★★★★</span></div>
+        <div class="fatigue-bar">
+          <div class="fb on md"></div><div class="fb on md"></div><div class="fb on md"></div><div class="fb on md"></div><div class="fb"></div>
+        </div>
+        <div class="spot-toggle-txt" id="arr3">▼ dettagli</div>
+      </div>
+    </div>
+    <div class="spot-body" id="sb3">
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-lbl">Coordinate</div><div class="info-val">43°49'N 11°49'E</div></div>
+        <div class="info-cell"><div class="info-lbl">Dal parcheggio</div><div class="info-val">5 km</div></div>
+        <div class="info-cell"><div class="info-lbl">Dislivello</div><div class="info-val">+280 m</div></div>
+        <div class="info-cell"><div class="info-lbl">Segnale</div><div class="info-val" style="color:var(--red);">Quasi assente</div></div>
+        <div class="info-cell"><div class="info-lbl">Rischio pioggia</div><div class="info-val" style="color:var(--red);">Alto</div></div>
+        <div class="info-cell"><div class="info-lbl">Affollamento</div><div class="info-val">Basso</div></div>
+        <div class="info-cell"><div class="info-lbl">Alba</div><div class="info-val star-on">★★★★★</div></div>
+        <div class="info-cell"><div class="info-lbl">Tramonto</div><div class="info-val star-on">★★★★<span class="star-off">★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Terreno</div><div class="info-val">Crinale erboso</div></div>
+      </div>
+      <div class="legal-warn">ZONA GRIGIA — verificare confini parco, comportamento low-profile obbligatorio</div>
+      <div class="pro-con">
+        <div>
+          <div class="pro-label g">PRO</div>
+          <div class="pro-item">+ Isolamento totale la sera<br>+ Vista Diga di Ridracoli e Adriatico<br>+ Stelle straordinarie (zero inquinamento)<br>+ Citata da Dante nel Purgatorio (Canto XIV)</div>
+        </div>
+        <div>
+          <div class="pro-label r">CONTRO</div>
+          <div class="pro-item">- Acqua zero in vetta (portare 3L+ a testa)<br>- Vento notturno molto intenso<br>- Segnale telefonico assente<br>- Accesso più lungo</div>
+        </div>
+      </div>
+      <div class="spot-quote" style="border-color:#B08AFF;">
+        "Lo spot più cinematografico e isolato. La radura sotto la cima (versante toscano) protegge dal vento. Siamo arrivati alle 18 e non c'era nessuno. Il lupo ha ululato verso mezzanotte." — Blog escursionismo
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPOT 4 ── -->
+  <div class="spot-card" id="sc4" style="border-color:rgba(77,191,207,0.3);">
+    <div class="spot-hd" onclick="toggleSpot(4)">
+      <div class="spot-num" style="color:#4DBFCF;">04</div>
+      <div class="spot-info">
+        <div class="spot-name">Passo della Calla — Crinale GEA 00</div>
+        <div class="spot-sub">Il punto di partenza perfetto — logistica facile</div>
+        <div class="spot-tags">
+          <span class="stag" style="color:#4DBFCF;border-color:rgba(77,191,207,0.3);">LOGISTICA FACILE</span>
+          <span class="stag">1296 m</span>
+          <span class="stag">0 km (al passo)</span>
+          <span class="stag">Portare acqua</span>
+        </div>
+      </div>
+      <div class="spot-meta">
+        <div class="spot-stars"><span class="star-on">★★★★</span><span class="star-off">★</span></div>
+        <div class="fatigue-bar">
+          <div class="fb on lo"></div><div class="fb on lo"></div><div class="fb"></div><div class="fb"></div><div class="fb"></div>
+        </div>
+        <div class="spot-toggle-txt" id="arr4">▼ dettagli</div>
+      </div>
+    </div>
+    <div class="spot-body" id="sb4">
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-lbl">Coordinate</div><div class="info-val">43°52'N 11°44'E</div></div>
+        <div class="info-cell"><div class="info-lbl">Dal parcheggio</div><div class="info-val">0 km (al passo)</div></div>
+        <div class="info-cell"><div class="info-lbl">Dislivello</div><div class="info-val">+200 m</div></div>
+        <div class="info-cell"><div class="info-lbl">Segnale</div><div class="info-val">Medio</div></div>
+        <div class="info-cell"><div class="info-lbl">Rischio pioggia</div><div class="info-val">Medio</div></div>
+        <div class="info-cell"><div class="info-lbl">Affollamento</div><div class="info-val">Medio (di giorno)</div></div>
+        <div class="info-cell"><div class="info-lbl">Alba</div><div class="info-val star-on">★★★★<span class="star-off">★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Tramonto</div><div class="info-val star-on">★★★★<span class="star-off">★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Terreno</div><div class="info-val">Crinale prativo</div></div>
+      </div>
+      <div class="legal-warn">ZONA GRIGIA — Capanna CAI La Calla (verificare apertura)</div>
+      <div class="pro-con">
+        <div>
+          <div class="pro-label g">PRO</div>
+          <div class="pro-item">+ Auto direttamente al passo<br>+ Capanna CAI come base di partenza<br>+ Crinale GEA 00 facile da seguire<br>+ Di sera totalmente deserto</div>
+        </div>
+        <div>
+          <div class="pro-label r">CONTRO</div>
+          <div class="pro-item">- Di giorno frequentato da gitanti<br>- Zona legalmente grigia<br>- Meno isolato degli altri spot</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SPOT 5 ── -->
+  <div class="spot-card" id="sc5" style="border-color:rgba(93,191,122,0.25);">
+    <div class="spot-hd" onclick="toggleSpot(5)">
+      <div class="spot-num" style="color:var(--green);">05</div>
+      <div class="spot-info">
+        <div class="spot-name">Campigna — Foresta della Lama</div>
+        <div class="spot-sub">L'abetaia primordiale — atmosfera fiabestica</div>
+        <div class="spot-tags">
+          <span class="stag" style="color:var(--green);border-color:rgba(93,191,122,0.3);">PIU' SICURA</span>
+          <span class="stag">900–1100 m</span>
+          <span class="stag">45'–1h</span>
+          <span class="stag">Ruscelli permanenti</span>
+        </div>
+      </div>
+      <div class="spot-meta">
+        <div class="spot-stars"><span class="star-on">★★★</span><span class="star-off">★★</span></div>
+        <div class="fatigue-bar">
+          <div class="fb on lo"></div><div class="fb on lo"></div><div class="fb"></div><div class="fb"></div><div class="fb"></div>
+        </div>
+        <div class="spot-toggle-txt" id="arr5">▼ dettagli</div>
+      </div>
+    </div>
+    <div class="spot-body" id="sb5">
+      <div class="info-grid">
+        <div class="info-cell"><div class="info-lbl">Zona</div><div class="info-val">43°54'N 11°44'E</div></div>
+        <div class="info-cell"><div class="info-lbl">Dal parcheggio</div><div class="info-val">2 km</div></div>
+        <div class="info-cell"><div class="info-lbl">Dislivello</div><div class="info-val">+200 m</div></div>
+        <div class="info-cell"><div class="info-lbl">Segnale</div><div class="info-val">Debole</div></div>
+        <div class="info-cell"><div class="info-lbl">Rischio pioggia</div><div class="info-val" style="color:var(--green);">Basso (foresta)</div></div>
+        <div class="info-cell"><div class="info-lbl">Affollamento</div><div class="info-val">Molto basso</div></div>
+        <div class="info-cell"><div class="info-lbl">Alba</div><div class="info-val"><span class="star-on">★★</span><span class="star-off">★★★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Tramonto</div><div class="info-val"><span class="star-on">★★</span><span class="star-off">★★★</span></div></div>
+        <div class="info-cell"><div class="info-lbl">Terreno</div><div class="info-val">Suolo morbido abeti</div></div>
+      </div>
+      <div class="legal-warn">ZONA GRIGIA — foresta demaniale (non parco nazionale)</div>
+      <div class="pro-con">
+        <div>
+          <div class="pro-label g">PRO</div>
+          <div class="pro-item">+ Protezione totale da pioggia/vento<br>+ Acqua abbondante — ruscelli perrenni<br>+ Abeti bianchi centenari straordinari<br>+ Lupi e cervi presenti stabilmente</div>
+        </div>
+        <div>
+          <div class="pro-label r">CONTRO</div>
+          <div class="pro-item">- Nessuna vista panoramica<br>- Poco adatta per alba/tramonto<br>- Buio totale e silenzio assoluto (pro o contro a seconda)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TABELLA COMPARATIVA ─── -->
+<div class="section" id="s-compare">
+  <div class="sec-header">
+    <div class="sec-tag">Dati a confronto</div>
+    <h2 class="sec-h2">TABELLA<br>COMPARATIVA</h2>
+    <p class="sec-desc">Tutti i 5 spot messi a confronto per scegliere quello più adatto alla vostra spedizione.</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Spot</th><th>Quota</th><th>Fatica</th><th>Wow</th>
+          <th>Legalità</th><th>Acqua</th><th>Alba</th><th>Affollam.</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="td-name">Monte Falco</td>
+          <td class="mono">1658m</td>
+          <td class="td-fire">Media</td>
+          <td><span class="star-on">★★★★★</span></td>
+          <td class="td-fire">Zona grigia</td>
+          <td class="mono">1km</td>
+          <td><span class="star-on">★★★★★</span></td>
+          <td>Medio</td>
+        </tr>
+        <tr>
+          <td class="td-name">San Paolo in Alpe</td>
+          <td class="mono">1030m</td>
+          <td class="td-green">Bassa</td>
+          <td><span class="star-on">★★★★</span><span class="star-off">★</span></td>
+          <td class="td-green">100% Legale</td>
+          <td class="mono">Interna</td>
+          <td><span class="star-on">★★★★</span><span class="star-off">★</span></td>
+          <td>Basso</td>
+        </tr>
+        <tr>
+          <td class="td-name">Poggio Scali</td>
+          <td class="mono">1520m</td>
+          <td class="td-fire">Media-alta</td>
+          <td><span class="star-on">★★★★★</span></td>
+          <td class="td-fire">Zona grigia</td>
+          <td class="mono">Zero (portare)</td>
+          <td><span class="star-on">★★★★★</span></td>
+          <td>Bassissimo</td>
+        </tr>
+        <tr>
+          <td class="td-name">Passo Calla</td>
+          <td class="mono">1296m</td>
+          <td class="td-green">Bassa</td>
+          <td><span class="star-on">★★★★</span><span class="star-off">★</span></td>
+          <td class="td-fire">Zona grigia</td>
+          <td class="mono">Portare</td>
+          <td><span class="star-on">★★★★</span><span class="star-off">★</span></td>
+          <td>Medio (giorno)</td>
+        </tr>
+        <tr>
+          <td class="td-name">Campigna</td>
+          <td class="mono">900m</td>
+          <td class="td-green">Bassa</td>
+          <td><span class="star-on">★★★</span><span class="star-off">★★</span></td>
+          <td class="td-fire">Zona grigia</td>
+          <td class="mono">Abbondante</td>
+          <td><span class="star-on">★★</span><span class="star-off">★★★</span></td>
+          <td>Bassissimo</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="picks-grid">
+    <div class="pick-card glass" style="border-color:rgba(255,122,0,0.25);">
+      <div class="pick-label">Miglior WOW</div>
+      <div class="pick-name">Monte Falco 1658m</div>
+      <div class="pick-desc">Vista 360°, alba sull'Adriatico, bramiti. L'esperienza cinematografica definitiva.</div>
+    </div>
+    <div class="pick-card glass" style="border-color:rgba(93,191,122,0.25);">
+      <div class="pick-label">Miglior Principianti</div>
+      <div class="pick-name">San Paolo in Alpe</div>
+      <div class="pick-desc">100% legale, struttura, acqua, fauna. Nessuno stress per la prima volta.</div>
+    </div>
+    <div class="pick-card glass" style="border-color:rgba(176,138,255,0.25);">
+      <div class="pick-label">Piu' Isolata</div>
+      <div class="pick-name">Poggio Scali</div>
+      <div class="pick-desc">Citata da Dante. Silenzio totale. Stelle e lupi. Per chi non ha paura.</div>
+    </div>
+    <div class="pick-card glass" style="border-color:rgba(255,122,0,0.25);">
+      <div class="pick-label">Miglior Qualita'/Fatica</div>
+      <div class="pick-name">Monte Falco</div>
+      <div class="pick-desc">1h30' di cammino, parcheggio vicino, panorama imbattibile. Rapporto ottimale.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PERCORSO ─── -->
+<div class="section" id="s-route">
+  <div class="sec-header">
+    <div class="sec-tag">GEA Sentiero 00</div>
+    <h2 class="sec-h2">PERCORSO<br>COMPLETO</h2>
+    <p class="sec-desc">Passo della Calla → Monte Falco 1658m. Tutti i waypoint, i tempi reali e le soste consigliate.</p>
+  </div>
+
+  <!-- MAPPA LEAFLET -->
+  <div id="map-container"></div>
+
+  <!-- ELEVATION CHART -->
+  <div class="elevation-wrap">
+    <div class="el-header">PROFILO ALTIMETRICO — Passo Calla → Monte Falco</div>
+    <div style="position:relative;height:160px;">
+      <canvas id="elevChart"></canvas>
+    </div>
+  </div>
+
+  <!-- WEATHER WIDGET -->
+  <div class="weather-card glass" id="weatherCard">
+    <div class="card-ttl fire-c">METEO LIVE — Crinale Tosco-Romagnolo (1500m)</div>
+    <div id="weatherContent">
+      <div style="font-family:var(--mono); font-size:0.7rem; color:var(--sand-dim); padding:20px 0; text-align:center;">
+        Caricamento dati meteo...
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- TIMELINE GIORNO 1 -->
+  <div class="card-ttl mb14" style="font-family:var(--mono); font-size:0.65rem; letter-spacing:0.1em; color:var(--fire);">GIORNO 1 — Partenza e Salita</div>
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-time">13:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div><div class="tl-line" style="background:#4DBFCF;"></div></div>
+      <div class="tl-body" style="border-color:#4DBFCF;">
+        <div class="tl-title">Partenza da Ravenna</div>
+        <div class="tl-desc">Via SP67 → Forlì → SP4 Corniolo → Passo della Calla. ~1h 45' senza traffico. Parcheggio gratuito al passo.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">15:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div><div class="tl-line" style="background:#4DBFCF;"></div></div>
+      <div class="tl-body" style="border-color:#4DBFCF;">
+        <div class="tl-title">Parcheggio Passo della Calla — 1296m</div>
+        <div class="tl-desc">Ultimo check telefoni. Divisione zaini. Avvisa un familiare con piano e orari. Foto di gruppo obbligatoria.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">16:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+      <div class="tl-body" style="border-color:var(--green);">
+        <div class="tl-title">Ingresso Sentiero GEA 00</div>
+        <div class="tl-desc">Segnavia bianco-rosso CAI. Terreno misto bosco-crinale. Passo lento con zaini pesanti.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">16:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+      <div class="tl-body" style="border-color:var(--green);">
+        <div class="tl-title">Fonte Borbotto — 1350m — RIEMPI LE BORRACCE</div>
+        <div class="tl-desc">Ultima fonte d'acqua sicura prima della vetta. Riempi tutto. Filtra sempre prima di bere.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">17:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#B08AFF;"></div><div class="tl-line" style="background:#B08AFF;"></div></div>
+      <div class="tl-body" style="border-color:#B08AFF;">
+        <div class="tl-title">Risalita verso Monte Falco</div>
+        <div class="tl-desc">Tratto più impegnativo: +300m in 45' con zaino pieno. Sentiero esposto al vento. Crinale stretto e panoramico.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">17:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--fire);"></div><div class="tl-line" style="background:var(--fire);"></div></div>
+      <div class="tl-body" style="border-color:var(--fire);">
+        <div class="tl-title" style="color:var(--fire);">VETTA MONTE FALCO — 1658m</div>
+        <div class="tl-desc">360° di panorama. Scatta tutto. Valuta il vento. Trova il versante riparato per il bivacco (versante toscano, a sud).</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">18:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+      <div class="tl-body" style="border-color:var(--green);">
+        <div class="tl-title">Setup Bivacco</div>
+        <div class="tl-desc">50-100m sotto la vetta, versante toscano. Zona pianeggiante con erba. Monta prima del tramonto. Mai su depressioni.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">19:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--fire);"></div><div class="tl-line" style="background:var(--fire);"></div></div>
+      <div class="tl-body" style="border-color:var(--fire);">
+        <div class="tl-title" style="color:var(--fire);">Golden Hour — Cena — Bramiti</div>
+        <div class="tl-desc">Il momento più magico. In settembre sentirete i bramiti dei cervi dalla valle. Tramonto sul Mugello. Fornello a gas.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">21:00+</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#4f46e5;"></div></div>
+      <div class="tl-body" style="border-color:#4f46e5;">
+        <div class="tl-title" style="color:#a5b4fc;">Notte Stellata — Silenzio Totale</div>
+        <div class="tl-desc">Zero inquinamento luminoso. Via Lattea visibile. Temperature: 5-12°C. SkySafari offline consigliato.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GIORNO 2 -->
+  <div class="card-ttl mb14" style="font-family:var(--mono); font-size:0.65rem; letter-spacing:0.1em; color:var(--fire);">GIORNO 2 — Alba e Discesa</div>
+  <div class="timeline">
+    <div class="tl-item">
+      <div class="tl-time">05:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--fire);"></div><div class="tl-line" style="background:var(--fire);"></div></div>
+      <div class="tl-body" style="border-color:var(--fire);">
+        <div class="tl-title" style="color:var(--fire);">ALBA — E' per questo che siete venuti</div>
+        <div class="tl-desc">Sveglia 30' prima. Versante est. Pianura romagnola in nebbia. Adriatico all'orizzonte. Nessuno parlerà per diversi minuti.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">07:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+      <div class="tl-body" style="border-color:var(--green);">
+        <div class="tl-title">Colazione + Leave No Trace</div>
+        <div class="tl-desc">Colazione calda. Smonta il campo: niente rifiuti, erba appianata. Porta giù tutto senza eccezioni.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">08:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#B08AFF;"></div><div class="tl-line" style="background:#B08AFF;"></div></div>
+      <div class="tl-body" style="border-color:#B08AFF;">
+        <div class="tl-title">Deviazione Monte Falterona (opzionale)</div>
+        <div class="tl-desc">1h A/R — Falterona 1654m e Fonte del Capo d'Arno. La sorgente del fiume Arno, citata da Dante. Imperdibile.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">09:30</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#B08AFF;"></div><div class="tl-line" style="background:#B08AFF;"></div></div>
+      <div class="tl-body" style="border-color:#B08AFF;">
+        <div class="tl-title">Discesa al Passo della Calla</div>
+        <div class="tl-desc">Stesso sentiero GEA 00. Con zaino calcola 1h 20'. Stop al Rifugio Le Fontanelle per caffè.</div>
+      </div>
+    </div>
+    <div class="tl-item">
+      <div class="tl-time">11:00</div>
+      <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div></div>
+      <div class="tl-body" style="border-color:#4DBFCF;">
+        <div class="tl-title">Rientro a Ravenna</div>
+        <div class="tl-desc">Opzionale: pranzo Santa Sofia o visita Diga di Ridracoli (20' in auto). Rientro Ravenna: ore 13-14.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIANO B -->
+  <div class="alert-amber">
+    <h3>PIANO B — Maltempo</h3>
+    <ul>
+      <li>Temporale nel pomeriggio → non salire sul crinale, fermati al Rifugio Le Fontanelle</li>
+      <li>Brutto meteo al mattino → sposta a Campigna (foresta, protetta) o San Paolo in Alpe</li>
+      <li>Alternativa completa: Diga di Ridracoli + Valle del Bidente (bassa quota, coperta)</li>
+      <li><strong>Soccorso Alpino: 118 — Carabinieri: 112</strong></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── KIT / EQUIPAGGIAMENTO ─── -->
+<div class="section" id="s-kit">
+  <div class="sec-header">
+    <div class="sec-tag">4 persone — zaini da 12-16kg</div>
+    <h2 class="sec-h2">KIT<br>SPEDIZIONE</h2>
+    <p class="sec-desc">Checklist completa con divisione intelligente del peso tra i 4 membri. Niente di superfluo, niente di essenziale mancante.</p>
+  </div>
+
+  <div class="alert-amber mb20">
+    <h3>Principio Base</h3>
+    <p>Zaino individuale max 12-16 kg. Dividete tenda/cucina/cibo in modo intelligente tra i 4. Il freddo dal suolo è il peggior nemico — non risparmiare sul materassino.</p>
+  </div>
+
+  <!-- SHELTER -->
+  <div class="card glass" style="border-color:rgba(176,138,255,0.25); margin-bottom:14px;">
+    <div class="gear-section-head" style="color:#B08AFF;">SHELTER E SONNO</div>
+    <div class="gear-row" style="font-size:0.65rem; color:var(--sand-dim); padding-bottom:8px; margin-bottom:4px; font-family:var(--mono);">
+      <div>Oggetto</div><div>Peso</div><div>Note</div><div>Chi porta</div>
+    </div>
+    <div class="gear-row"><div class="gear-item">Tenda 3-4 posti (4 stagioni)</div><div class="gear-weight">2-3 kg</div><div class="gear-note">Dividere: uno porta corpo+paletti, l'altro fly+picchetti</div><div class="gear-who">CAMPO + MONI</div></div>
+    <div class="gear-row"><div class="gear-item">Sacco a pelo comfort +5°C</div><div class="gear-weight">0.8-1.2 kg</div><div class="gear-note">Ognuno il suo. Autunno: comfort 0°C obbligatorio</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Materassino isolante R-value ≥ 3</div><div class="gear-weight">0.4-0.5 kg</div><div class="gear-note">Non risparmiare. Il freddo risale dal terreno</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Tarp o bivy bag (alternativa tenda)</div><div class="gear-weight">0.3-0.6 kg</div><div class="gear-note">Per zona grigia: tarp = bivacco, non campeggio</div><div class="gear-who">GALLA</div></div>
+  </div>
+
+  <!-- CUCINA -->
+  <div class="card glass" style="border-color:rgba(93,191,122,0.25); margin-bottom:14px;">
+    <div class="gear-section-head">CUCINA E ACQUA</div>
+    <div class="gear-row"><div class="gear-item">Fornello a gas piezoelettrico</div><div class="gear-weight">0.1 kg</div><div class="gear-note">Uno basta per 4. Cartuccia 250g = 2 pasti</div><div class="gear-who">TOZZI</div></div>
+    <div class="gear-row"><div class="gear-item">Pentola / pot 1.5L</div><div class="gear-weight">0.25 kg</div><div class="gear-note">Titanio se vuoi risparmiare peso</div><div class="gear-who">TOZZI</div></div>
+    <div class="gear-row"><div class="gear-item">Borraccia 1L × 4</div><div class="gear-weight">0.15 kg</div><div class="gear-note">Più sacca idrica 2L almeno per il gruppo</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Filtro acqua (Sawyer Squeeze)</div><div class="gear-weight">0.09 kg</div><div class="gear-note">Obbligatorio. Le sorgenti non sono sempre sicure</div><div class="gear-who">CAMPO</div></div>
+    <div class="gear-row"><div class="gear-item">Pastiglie cloro (backup)</div><div class="gear-weight">0.02 kg</div><div class="gear-note">10 pastiglie = 10L d'acqua sicura di emergenza</div><div class="gear-who">MONI</div></div>
+    <div class="gear-row"><div class="gear-item">Cibo per 4 persone × 2 pasti</div><div class="gear-weight">3-4 kg</div><div class="gear-note">Liofilizzato / pasta / riso. Snack energetici. Divisione equa.</div><div class="gear-who">TOZZI + tutti</div></div>
+  </div>
+
+  <!-- NAVIGAZIONE E SICUREZZA -->
+  <div class="card glass" style="border-color:rgba(255,122,0,0.2); margin-bottom:14px;">
+    <div class="gear-section-head">NAVIGAZIONE E SICUREZZA</div>
+    <div class="gear-row"><div class="gear-item">Mappa cartacea 1:25.000</div><div class="gear-weight">0.08 kg</div><div class="gear-note">OBBLIGATORIA. Backup per quando il telefono muore</div><div class="gear-who">CAMPO</div></div>
+    <div class="gear-row"><div class="gear-item">Traccia GPX offline (Komoot)</div><div class="gear-weight">—</div><div class="gear-note">Scarica PRIMA di partire. GEA Sentiero 00</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Torcia frontale + batterie spare</div><div class="gear-weight">0.1 kg</div><div class="gear-note">Una a testa. Notturno in montagna senza luce = pericolo</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Power bank 20.000mAh</div><div class="gear-weight">0.45 kg</div><div class="gear-note">Uno per il gruppo. Carica 3-4 telefoni completi</div><div class="gear-who">GALLA</div></div>
+    <div class="gear-row"><div class="gear-item">Kit primo soccorso</div><div class="gear-weight">0.3 kg</div><div class="gear-note">Cerotti, garze, bende, antidolorifico, pinzetta zecche</div><div class="gear-who">MONI</div></div>
+    <div class="gear-row"><div class="gear-item">Fischietto emergenza</div><div class="gear-weight">0.02 kg</div><div class="gear-note">3 fischi = segnale internazionale di soccorso</div><div class="gear-who">CAMPO</div></div>
+  </div>
+
+  <!-- ABBIGLIAMENTO -->
+  <div class="card glass" style="margin-bottom:14px;">
+    <div class="gear-section-head">ABBIGLIAMENTO — Strato per Strato</div>
+    <div class="gear-row"><div class="gear-item">Base layer termico (maniche lunghe)</div><div class="gear-weight">0.2 kg</div><div class="gear-note">Merino o sintetico. Mai cotone in montagna</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Strato mid (pile o softshell)</div><div class="gear-weight">0.4 kg</div><div class="gear-note">Temperature notturne 5-12°C. Indispensabile</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Giacca impermeabile (hardshell)</div><div class="gear-weight">0.5 kg</div><div class="gear-note">Temporali estivi in 20'. Non trascurarla</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Pantaloni trekking (non jeans)</div><div class="gear-weight">0.35 kg</div><div class="gear-note">Quick-dry. Il terreno bagnato è scivoloso</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Scarpe trekking impermeabili</div><div class="gear-weight">0.9 kg</div><div class="gear-note">Caviglia alta. GIA' RODATE. Non nuove il giorno della gita</div><div class="gear-who">Tutti</div></div>
+    <div class="gear-row"><div class="gear-item">Berretto lana + guanti leggeri</div><div class="gear-weight">0.1 kg</div><div class="gear-note">Anche in estate. Sul crinale di notte si gela</div><div class="gear-who">Tutti</div></div>
+  </div>
+
+  <div class="weight-bar-wrap">
+    <div class="weight-bar-lbl">
+      <span>Peso gruppo stimato</span>
+      <span class="fire-c mono">~40 kg totali</span>
+    </div>
+    <div class="weight-bar-track">
+      <div class="weight-bar-fill" style="width:72%;"></div>
+    </div>
+    <div class="weight-bar-lbl mt8" style="font-size:0.6rem;">
+      <span>Ottimale: 35 kg</span>
+      <span>Attuale: ~40 kg</span>
+      <span>Max: 55 kg</span>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SICUREZZA ─── -->
+<div class="section" id="s-safety">
+  <div class="sec-header">
+    <div class="sec-tag">Prima di salire leggi questo</div>
+    <h2 class="sec-h2">SICUREZZA<br>IN QUOTA</h2>
+    <p class="sec-desc">I rischi reali del crinale tosco-romagnolo e come gestirli. Nessuna allarmismo, solo preparazione concreta.</p>
+  </div>
+
+  <div class="risk-grid">
+    <div class="risk-cell glass">
+      <div class="risk-name">Temporali</div>
+      <div class="risk-val">Rischio</div>
+      <div class="danger-bar">
+        <div class="db hi"></div><div class="db hi"></div><div class="db hi"></div><div class="db hi"></div><div class="db"></div>
+      </div>
+    </div>
+    <div class="risk-cell glass">
+      <div class="risk-name">Zecche</div>
+      <div class="risk-val">Rischio</div>
+      <div class="danger-bar">
+        <div class="db md"></div><div class="db md"></div><div class="db md"></div><div class="db"></div><div class="db"></div>
+      </div>
+    </div>
+    <div class="risk-cell glass">
+      <div class="risk-name">Vento Notturno</div>
+      <div class="risk-val">Rischio</div>
+      <div class="danger-bar">
+        <div class="db md"></div><div class="db md"></div><div class="db md"></div><div class="db"></div><div class="db"></div>
+      </div>
+    </div>
+    <div class="risk-cell glass">
+      <div class="risk-name">Ipotermia</div>
+      <div class="risk-val">Rischio</div>
+      <div class="danger-bar">
+        <div class="db md"></div><div class="db md"></div><div class="db"></div><div class="db"></div><div class="db"></div>
+      </div>
+    </div>
+    <div class="risk-cell glass">
+      <div class="risk-name">Fauna</div>
+      <div class="risk-val">Rischio</div>
+      <div class="danger-bar">
+        <div class="db lo"></div><div class="db lo"></div><div class="db"></div><div class="db"></div><div class="db"></div>
+      </div>
+    </div>
+    <div class="risk-cell glass">
+      <div class="risk-name">Segnale GSM</div>
+      <div class="risk-val">Copertura</div>
+      <div class="danger-bar">
+        <div class="db lo"></div><div class="db lo"></div><div class="db"></div><div class="db"></div><div class="db"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert-fire mb14">
+    <h3>TEMPORALI — Pericolo N.1 sul Crinale</h3>
+    <p>Sul crinale a 1500m+ i temporali estivi arrivano in 15-20 minuti da nubi all'apparenza innocue. Se dopo le 13:00 vedi nubi cumuliformi svilupparsi verticalmente, scendi subito. Non aspettare. Non sederti sull'erba alta in caso di temporale — rannicchiati su base isolante.</p>
+  </div>
+
+  <div class="card glass mb14">
+    <div class="card-ttl">Temperature Notturne Reali</div>
+    <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:8px;">
+      <div class="info-cell"><div class="info-lbl">Maggio</div><div class="info-val">2–8°C</div></div>
+      <div class="info-cell"><div class="info-lbl">Giugno</div><div class="info-val">6–12°C</div></div>
+      <div class="info-cell"><div class="info-lbl">Luglio</div><div class="info-val">8–14°C</div></div>
+      <div class="info-cell"><div class="info-lbl">Agosto</div><div class="info-val">7–13°C</div></div>
+    </div>
+    <p class="fs-sm muted mt8">Sul crinale a 1658m sottrarre 3-5°C aggiuntivi rispetto alla pianura. Sacco a pelo comfort +5°C è il minimo assoluto.</p>
+  </div>
+
+  <div class="card glass mb14">
+    <div class="card-ttl">Fauna Presente</div>
+    <div class="fauna-item">
+      <div>
+        <div class="fauna-name">Lupo Appenninico</div>
+        <div class="fauna-desc">Presente in zona. Schivo e notturno. Rischio praticamente zero per l'essere umano. Udire gli ululati è uno dei momenti più belli della notte. Non lasciare cibo fuori dalla tenda.</div>
+      </div>
+    </div>
+    <div class="fauna-item">
+      <div>
+        <div class="fauna-name">Cinghiale</div>
+        <div class="fauna-desc">Attivo di notte. Curioso per il cibo. Non aggressivo se non disturbato con cuccioli. Metti tutto il cibo dentro sacchi chiusi o appeso a un ramo a 2m d'altezza.</div>
+      </div>
+    </div>
+    <div class="fauna-item">
+      <div>
+        <div class="fauna-name">Cervo</div>
+        <div class="fauna-desc">In settembre il bramito è il suono più cinematografico dell'Appennino. I cervi maschi vocalizzano continuamente al tramonto e all'alba. Nessun pericolo per l'uomo.</div>
+      </div>
+    </div>
+    <div class="fauna-item">
+      <div>
+        <div class="fauna-name">Zecche</div>
+        <div class="fauna-desc">Presenti da marzo a novembre tra 800-1400m. Più frequenti ai bordi dei sentieri nell'erba alta. Controlla tutto il corpo ogni sera. Pinzetta con leva obbligatoria nel kit. Spray repellente DEET 30%+.</div>
+      </div>
+    </div>
+    <div class="fauna-item">
+      <div>
+        <div class="fauna-name">Vipera Aspide</div>
+        <div class="fauna-desc">Presente fino a 1500m. Schiva. Non attacca se non calpestata o disturbata. Batti i bastoni sul terreno davanti a te. Non mettere mani in anfratti rocciosi senza guardare.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="alert-green">
+    <h3>EMERGENZA — Procedura</h3>
+    <ul>
+      <li>Segnale 118: descrivi posizione GPS o waypoint + numero di persone + tipo emergenza</li>
+      <li>Se senza segnale: scendi fino a trovare copertura (spesso al Passo della Calla)</li>
+      <li>Segnale internazionale di soccorso: 6 fischi / 6 lampi ripetuti ogni minuto</li>
+      <li>Avvisa sempre un familiare con piano e orario di rientro prima di partire</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ─── EPICO ─── -->
+<div class="section" id="s-epic">
+  <div class="sec-header">
+    <div class="sec-tag">I momenti che ricorderai</div>
+    <h2 class="sec-h2">L'ESPERIENZA<br>EPICA</h2>
+    <p class="sec-desc">I punti cinematografici, le stelle, i momenti mistici e le testimonianze di chi è stato prima di voi.</p>
+  </div>
+
+  <div class="g2 mb14">
+    <div class="card fire-glass">
+      <div class="card-ttl fire-c">ALBA — ore 05:30</div>
+      <p>Il versante est di Monte Falco guarda direttamente sull'Adriatico. Nelle giornate limpide l'orizzonte del mare è visibile oltre 120km. La pianura romagnola è coperta di nebbia come un mare in miniatura. Le prime luci tingono il crinale di arancione prima che il sole appaia. Non parlate. Non filmate. Guardate soltanto.</p>
+    </div>
+    <div class="card glass" style="border-color:rgba(176,138,255,0.25);">
+      <div class="card-ttl" style="color:#B08AFF;">STELLE — 21:00-03:00</div>
+      <p>Il crinale tosco-romagnolo è una delle zone con meno inquinamento luminoso dell'Appennino centrale. In notti senza luna la Via Lattea è visibile ad occhio nudo. Le stelle cadenti sono frequenti in agosto (Perseidi). App consigliata: SkySafari 7 (offline).</p>
+    </div>
+  </div>
+
+  <div class="card glass mb14">
+    <div class="card-ttl fire-c">Spot Cinematografici Meno Conosciuti</div>
+    <ul>
+      <li><strong>La Fonte del Capo d'Arno</strong> (Monte Falterona) — la sorgente del fiume Arno citata da Dante nel Purgatorio. Piccola pozza nascosta nel bosco.</li>
+      <li><strong>Il Gran Giogo dell'Appennino</strong> — il crinale visibile anche dalla pianura ravennate. "Il gran giogo" di dantesca memoria.</li>
+      <li><strong>Balze delle Rondinaie</strong> — dirupi con vista sul Mugello per escursionisti più preparati. Verticale e drammatico.</li>
+      <li><strong>Castel dell'Alpe</strong> — rudere medievale nel bosco vicino Corniolo. Atmosfera autentica, poco frequentato.</li>
+    </ul>
+  </div>
+
+  <div class="card-ttl mb14" style="font-family:var(--mono); font-size:0.65rem; letter-spacing:0.1em; color:var(--sand-dim);">TESTIMONIANZE</div>
+  <div class="quote-block">
+    <div class="quote-text">"La notte sul crinale tra Falco e Falterona è una di quelle esperienze che non si dimenticano. Il silenzio è assoluto, il vento muove l'erba del prato e senti solo i cervi in lontananza."</div>
+    <div class="quote-src">— Forum escursionismo CAI</div>
+  </div>
+  <div class="quote-block">
+    <div class="quote-text">"Il tramonto da Monte Falco con la luce arancione sulla faggeta è roba da piangere. Nessuno spot fotografico in Italia centrale batte questo in estate."</div>
+    <div class="quote-src">— Report Wikiloc</div>
+  </div>
+  <div class="quote-block">
+    <div class="quote-text">"Siamo arrivati a Poggio Scali alle 18 e non c'era nessuno. Abbiamo mangiato cena guardando il sole tramontare sulla Toscana e le stelle apparire una ad una. Il lupo ha ululato verso mezzanotte."</div>
+    <div class="quote-src">— Blog escursionismo outdooritalia.it</div>
+  </div>
+  <div class="quote-block">
+    <div class="quote-text">"Monte Falco all'alba. L'Adriatico era visibile. Nessuno ha detto niente per quasi dieci minuti. Il momento migliore della spedizione."</div>
+    <div class="quote-src">— Reddit r/italy · u/bivaccatore_appennino</div>
+  </div>
+</div>
+
+<!-- ─── NON FARE ─── -->
+<div class="section" id="s-donts">
+  <div class="sec-header">
+    <div class="sec-tag">Errori da evitare</div>
+    <h2 class="sec-h2">COSA<br>NON FARE</h2>
+    <p class="sec-desc">La mini guida degli errori più comuni — e più pericolosi — dei bivaccatori alle prime armi sul crinale appenninico.</p>
+  </div>
+
+  <div class="dont-item">
+    <div class="dont-num">01</div>
+    <div>
+      <div class="dont-title">NON accendere fuochi nel parco</div>
+      <div class="dont-desc">Vietato per legge dentro il Parco Nazionale in qualsiasi stagione, in qualsiasi condizione meteo. Multa fino a €3.000. Il fornello a gas chiuso è sempre e comunque permesso. Nessuna eccezione.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">02</div>
+    <div>
+      <div class="dont-title">NON montare la tenda dove vuoi</div>
+      <div class="dont-desc">Il campeggio libero è VIETATO nel parco. Multa oltre €1.000. Bivacca solo vicino a rifugi/bivacchi ufficiali aperti e segnalati come pieni, o in aree fuori dal perimetro del parco.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">03</div>
+    <div>
+      <div class="dont-title">NON bere acqua senza filtrare</div>
+      <div class="dont-desc">Le fonti possono contenere Giardia, Leptospira o altri agenti patogeni. Usa sempre filtro (Sawyer) o purificazione chimica. Le sorgenti segnalate sono relativamente sicure ma non garantite al 100%.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">04</div>
+    <div>
+      <div class="dont-title">NON lasciare cibo fuori di notte</div>
+      <div class="dont-desc">Cinghiali, volpi e ghiri sono attivi di notte e hanno un olfatto potente. Metti tutto il cibo in sacchi chiusi dentro la tenda o appeso a un ramo a 2m d'altezza. Nessuna briciola a terra.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">05</div>
+    <div>
+      <div class="dont-title">NON ignorare i segnali di temporale</div>
+      <div class="dont-desc">Sul crinale i temporali estivi arrivano in 15-20 minuti. Se vedi nubi cumuliformi crescere verticalmente dopo le 13:00, scendi immediatamente. Il crinale aperto durante un temporale è il posto più pericoloso in assoluto.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">06</div>
+    <div>
+      <div class="dont-title">NON fidarti solo del telefono</div>
+      <div class="dont-desc">Il segnale GSM è quasi assente sul crinale tra 1400-1658m. Porta sempre una mappa cartacea 1:25.000 o il GPX scaricato offline su Komoot/OsmAnd. Il GPS funziona senza segnale, le app online no.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">07</div>
+    <div>
+      <div class="dont-title">NON partire con scarpe non rodate</div>
+      <div class="dont-desc">Il terreno bagnato dopo la pioggia è scivoloso. Le scarpe nuove fanno vesciche dopo 2km. Indossa scarpe da trekking impermeabili con caviglia alta, già rodate con almeno 2-3 uscite precedenti.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">08</div>
+    <div>
+      <div class="dont-title">NON sottovalutare le temperature notturne</div>
+      <div class="dont-desc">Sul crinale a 1500m anche in luglio si scende a 5-8°C di notte. In settembre facilmente sotto i 5°C. Sacco a pelo comfort almeno +5°C + strato isolante mid layer + berretto. Il freddo impedisce il sonno e abbassa le difese.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">09</div>
+    <div>
+      <div class="dont-title">NON partire oltre le 14:00 con zaino pesante</div>
+      <div class="dont-desc">Con zaino da bivacco (12-16kg) calcola +30-40% rispetto ai tempi su AllTrails. Arrivare in vetta al buio con zaino pieno e tenda da montare è pericoloso. Parti entro le 14:00 massimo.</div>
+    </div>
+  </div>
+  <div class="dont-item">
+    <div class="dont-num">10</div>
+    <div>
+      <div class="dont-title">NON trascurare le zecche</div>
+      <div class="dont-desc">Presenti da marzo a novembre, fascia 800-1200m. Controlla tutto il corpo ogni sera: collo, ascelle, inguine, dietro le ginocchia. Pinzetta con leva obbligatoria nel kit. Rimuovi entro 24h per ridurre il rischio di Lyme.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PIANO FINALE ─── -->
+<div class="section" id="s-plan">
+  <div class="sec-header">
+    <div class="sec-tag">Itinerario pronto</div>
+    <h2 class="sec-h2">PIANO<br>FINALE</h2>
+    <p class="sec-desc">La raccomandazione definitiva, l'itinerario completo e la checklist pre-partenza. Tutto quello che serve per partire.</p>
+  </div>
+
+  <div class="plan-hero fire-glass" style="border-radius:16px; padding:24px; margin-bottom:20px;">
+    <div class="mono" style="font-size:0.6rem; color:var(--fire); letter-spacing:0.14em; margin-bottom:8px;">RACCOMANDAZIONE DEFINITIVA</div>
+    <div class="plan-rec">OPZIONE A — <span>WOW MASSIMO</span></div>
+    <p class="fs-sm muted mt8">Passo della Calla → Monte Falco. Parcheggio al passo, 1h30' di salita, bivacco sul versante toscano. Legalmente zona grigia ma tollerato con comportamento low-profile e discreto. Notte a 1658m, alba spettacolare, bramiti. La scelta cinematografica.</p>
+    <div class="divider"></div>
+    <div class="plan-rec" style="font-size:1.2rem;">OPZIONE B — <span>NESSUN PENSIERO</span></div>
+    <p class="fs-sm muted mt8">San Paolo in Alpe (prenotare subito via Tour de Bosc). Struttura con tetto, 100% legale, panorama Appennino, daini e cervi. La scelta giusta per chi non vuole rischi o è alla prima esperienza di bivacco.</p>
+  </div>
+
+  <div class="card-ttl mb14" style="font-family:var(--mono); font-size:0.65rem; letter-spacing:0.1em; color:var(--sand-dim);">CHECKLIST PRE-PARTENZA — 1 settimana prima</div>
+  <div class="checklist mb20">
+    <div class="check-item">Scarica mappa GPX offline (Komoot)</div>
+    <div class="check-item">Scarica traccia CAI 00 Passo Calla → Falco</div>
+    <div class="check-item">Prenota San Paolo in Alpe (se Opzione B)</div>
+    <div class="check-item">Controlla meteo 3gg prima (ARPAE)</div>
+    <div class="check-item">Avvisa familiare con piano e orari</div>
+    <div class="check-item">Sacco a pelo adeguato alla quota</div>
+    <div class="check-item">Cartucce gas × 2 (250g ciascuna)</div>
+    <div class="check-item">Carica power bank al 100%</div>
+    <div class="check-item">Kit pronto soccorso + pinzetta zecche</div>
+    <div class="check-item">Scarpe già rodate (2+ uscite)</div>
+    <div class="check-item">Dividi i pesi tra i 4 prima di partire</div>
+    <div class="check-item">Mappa cartacea 1:25.000 come backup</div>
+  </div>
+
+  <div class="card glass" style="border-color:rgba(93,191,122,0.3);">
+    <div class="card-ttl green-c">ITINERARIO COMPLETO — Pronto da Usare</div>
+    <div class="timeline mt8">
+      <div class="tl-item">
+        <div class="tl-time">GIORNO -1</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--sand-dim);"></div><div class="tl-line" style="background:var(--sand-dim);"></div></div>
+        <div class="tl-body" style="border-color:rgba(214,199,161,0.2);">
+          <div class="tl-desc">Controlla meteo ARPAE. Prepara zaini. Carica dispositivi. Scarica mappe offline. Dividi il cibo.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">13:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div><div class="tl-line" style="background:#4DBFCF;"></div></div>
+        <div class="tl-body" style="border-color:#4DBFCF;">
+          <div class="tl-title">Partenza Ravenna</div>
+          <div class="tl-desc">Via SP67. ~1h 45'. Benzina prima di Forlì.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">15:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div><div class="tl-line" style="background:#4DBFCF;"></div></div>
+        <div class="tl-body" style="border-color:#4DBFCF;">
+          <div class="tl-title">Parcheggio Passo della Calla 1296m</div>
+          <div class="tl-desc">Ultimo check. Avvisa qualcuno a casa. Foto di gruppo. Zaini in spalla.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">16:00</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+        <div class="tl-body" style="border-color:var(--green);">
+          <div class="tl-title">Sentiero GEA 00 — Entrata nel bosco</div>
+          <div class="tl-desc">Passo lento con zaini. Goditi il crinale.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">16:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+        <div class="tl-body" style="border-color:var(--green);">
+          <div class="tl-title">Fonte Borbotto — Riempi le borracce</div>
+          <div class="tl-desc">Ultima acqua. Filtra sempre.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">17:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--fire);"></div><div class="tl-line" style="background:var(--fire);"></div></div>
+        <div class="tl-body" style="border-color:var(--fire);">
+          <div class="tl-title" style="color:var(--fire);">Vetta Monte Falco 1658m</div>
+          <div class="tl-desc">Scatta tutto. Trova lo spot bivacco sul versante toscano.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">18:00</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+        <div class="tl-body" style="border-color:var(--green);">
+          <div class="tl-title">Setup bivacco + Cena con vista</div>
+          <div class="tl-desc">Tenda sul versante toscano. Cena. Tramonto. Bramiti.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">21:00+</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:#4f46e5;"></div><div class="tl-line" style="background:#4f46e5;"></div></div>
+        <div class="tl-body" style="border-color:#4f46e5;">
+          <div class="tl-title" style="color:#a5b4fc;">Stelle, ululati, bramiti</div>
+          <div class="tl-desc">Silenzio assoluto. La magia vera.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">05:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--fire);"></div><div class="tl-line" style="background:var(--fire);"></div></div>
+        <div class="tl-body" style="border-color:var(--fire);">
+          <div class="tl-title" style="color:var(--fire);">ALBA — Adriatico all'orizzonte</div>
+          <div class="tl-desc">Il momento per cui siete venuti. Silenzio.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">08:00</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:var(--green);"></div><div class="tl-line" style="background:var(--green);"></div></div>
+        <div class="tl-body" style="border-color:var(--green);">
+          <div class="tl-title">Leave No Trace — Smonta tutto</div>
+          <div class="tl-desc">Niente rifiuti. Porta giù ogni cosa. Erba appianata.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">09:30</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:#B08AFF;"></div><div class="tl-line" style="background:#B08AFF;"></div></div>
+        <div class="tl-body" style="border-color:#B08AFF;">
+          <div class="tl-title">Discesa al parcheggio</div>
+          <div class="tl-desc">Stesso sentiero. Caffè al Rifugio Le Fontanelle.</div>
+        </div>
+      </div>
+      <div class="tl-item">
+        <div class="tl-time">11:00</div>
+        <div class="tl-connector"><div class="tl-dot" style="background:#4DBFCF;"></div></div>
+        <div class="tl-body" style="border-color:#4DBFCF;">
+          <div class="tl-title">Rientro a Ravenna</div>
+          <div class="tl-desc">Pranzo Santa Sofia o visita Diga di Ridracoli. A casa ore 13-14.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── TEAM ─── -->
+<div class="section" id="s-team">
+  <div class="sec-header">
+    <div class="sec-tag">I quattro</div>
+    <h2 class="sec-h2">EXPEDITION<br>TEAM</h2>
+    <p class="sec-desc">Quattro persone. Un obiettivo. Nessuno ha esperienza sufficiente ma tutti sono convinti di averla.</p>
+  </div>
+
+  <div class="team-grid">
+
+    <!-- CAMPO -->
+    <div class="team-card glass-hi" style="--accent-c:var(--fire); --accent-c-dim:var(--fire-faint);">
+      <style>
+        #tc-campo::before { background:linear-gradient(90deg, var(--fire), transparent); }
+      </style>
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg, var(--fire), transparent);border-radius:16px 16px 0 0;"></div>
+      <div class="tc-avatar" style="color:var(--fire); border-color:rgba(255,122,0,0.4); box-shadow:0 0 24px var(--fire-faint);">C</div>
+      <div class="tc-nickname">CAMPO</div>
+      <div class="tc-role" style="color:var(--fire);">The Welder — Navigatore Ufficioso</div>
+      <div class="tc-bio">"Sostiene di saper leggere le stelle. Ha confuso Orione con un lampione per i primi 40 minuti. Probabilmente ci perderemo, ma almeno ci perderemo con fiducia."</div>
+      <div class="stats-wrap">
+        <div class="stat-row">
+          <div class="stat-hd"><span>STAMINA</span><span class="fire-c">65</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--fire);" data-pct="65"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>NAVIGATION</span><span class="fire-c">70</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--fire);" data-pct="70"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>BUSHCRAFT</span><span class="fire-c">50</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--fire);" data-pct="50"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>MORALE</span><span class="fire-c">80</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--fire);" data-pct="80"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOZZI -->
+    <div class="team-card glass-hi">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg, var(--green), transparent);border-radius:16px 16px 0 0;"></div>
+      <div class="tc-avatar" style="color:var(--green); border-color:rgba(93,191,122,0.4); box-shadow:0 0 24px rgba(93,191,122,0.1);">T</div>
+      <div class="tc-nickname">TOZZI</div>
+      <div class="tc-role" style="color:var(--green);">Responsabile Cibo — Logistica Alimentare</div>
+      <div class="tc-bio">"Trasporta il 40% del cibo del gruppo. Ne consuma l'80% da solo entro la prima ora. Un mistero che la fisica non ha ancora risolto."</div>
+      <div class="stats-wrap">
+        <div class="stat-row">
+          <div class="stat-hd"><span>STAMINA</span><span style="color:var(--green);">75</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--green);" data-pct="75"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>NAVIGATION</span><span style="color:var(--green);">40</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--green);" data-pct="40"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>BUSHCRAFT</span><span style="color:var(--green);">60</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--green);" data-pct="60"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>MORALE</span><span style="color:var(--green);">60</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:var(--green);" data-pct="60"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GALLA -->
+    <div class="team-card glass-hi">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg, #B08AFF, transparent);border-radius:16px 16px 0 0;"></div>
+      <div class="tc-avatar" style="color:#B08AFF; border-color:rgba(176,138,255,0.4); box-shadow:0 0 24px rgba(176,138,255,0.1);">G</div>
+      <div class="tc-nickname">GALLA</div>
+      <div class="tc-role" style="color:#B08AFF;">Documentarista — Archivista Visivo</div>
+      <div class="tc-bio">"Registra ogni momento come fosse l'ultimo. Ha già pianificato 3 sequenze video da drone prima di decidere di portare il drone. Spoiler: non l'ha portato."</div>
+      <div class="stats-wrap">
+        <div class="stat-row">
+          <div class="stat-hd"><span>STAMINA</span><span style="color:#B08AFF;">70</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#B08AFF;" data-pct="70"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>NAVIGATION</span><span style="color:#B08AFF;">55</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#B08AFF;" data-pct="55"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>BUSHCRAFT</span><span style="color:#B08AFF;">45</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#B08AFF;" data-pct="45"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>MORALE</span><span style="color:#B08AFF;">85</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#B08AFF;" data-pct="85"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MONI -->
+    <div class="team-card glass-hi">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg, #4DBFCF, transparent);border-radius:16px 16px 0 0;"></div>
+      <div class="tc-avatar" style="color:#4DBFCF; border-color:rgba(77,191,207,0.4); box-shadow:0 0 24px rgba(77,191,207,0.1);">M</div>
+      <div class="tc-nickname">MONI</div>
+      <div class="tc-role" style="color:#4DBFCF;">Ufficiale Morale — Stabilizzatore Emotivo</div>
+      <div class="tc-bio">"Famoso per il sorriso e l'emotività. La sua funzione principale è dire che va tutto bene quando non va tutto bene. Funziona per ora. Speriamo tenga."</div>
+      <div class="stats-wrap">
+        <div class="stat-row">
+          <div class="stat-hd"><span>STAMINA</span><span style="color:#4DBFCF;">60</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#4DBFCF;" data-pct="60"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>NAVIGATION</span><span style="color:#4DBFCF;">35</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#4DBFCF;" data-pct="35"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>BUSHCRAFT</span><span style="color:#4DBFCF;">40</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#4DBFCF;" data-pct="40"></div></div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-hd"><span>MORALE</span><span style="color:#4DBFCF;">95</span></div>
+          <div class="stat-track"><div class="stat-fill" style="background:#4DBFCF;" data-pct="95"></div></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /team-grid -->
+</div>
+
+</main><!-- /sections-wrap -->
+</div><!-- /app-root -->
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════════════ -->
+<!-- ═══ LIBRARIES — loaded at body end so DOM is guaranteed ready ═══ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" crossorigin=""></script>
+
+<script>
+/* ════════════════════════════════════════════════════════
+   NAVIGATION
+════════════════════════════════════════════════════════ */
+let elevChartInstance = null;
+
+function showSec(id, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  btn.classList.add('active');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  // Lazy-init map AND chart only when route section becomes visible
+  if (id === 's-route') {
+    // Small delay so display:block has painted before Leaflet measures the container
+    setTimeout(() => {
+      initMap();
+      initElevChart();
+    }, 80);
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   SPOT TOGGLE
+════════════════════════════════════════════════════════ */
+function toggleSpot(n) {
+  const body = document.getElementById('sb' + n);
+  const arr  = document.getElementById('arr' + n);
+  const open = body.classList.toggle('open');
+  arr.textContent = open ? '▲ chiudi' : '▼ dettagli';
+}
+
+/* ════════════════════════════════════════════════════════
+   NIGHT MODE
+════════════════════════════════════════════════════════ */
+function toggleNight() {
+  const isNight = document.documentElement.getAttribute('data-night') === 'true';
+  const next = String(!isNight);
+  document.documentElement.setAttribute('data-night', next);
+  document.documentElement.classList.toggle('night', next === 'true');
+  try { localStorage.setItem('bivacco-night', next); } catch(_) {}
+}
+// Restore preference on load
+try {
+  if (localStorage.getItem('bivacco-night') === 'true') {
+    document.documentElement.setAttribute('data-night', 'true');
+    document.documentElement.classList.add('night');
+  }
+} catch(_) {}
+
+/* ════════════════════════════════════════════════════════
+   COUNTDOWN — DATA SPEDIZIONE: 1 GIUGNO 2026
+════════════════════════════════════════════════════════ */
+const EXPEDITION_DATE = new Date('2026-06-01T13:30:00');
+
+function updateCountdown() {
+  const diff = EXPEDITION_DATE - new Date();
+  const elD = document.getElementById('cd-d');
+  const elH = document.getElementById('cd-h');
+  const elM = document.getElementById('cd-m');
+  const elS = document.getElementById('cd-s');
+  if (!elD) return;
+  if (diff <= 0) {
+    elD.textContent = 'AVVENUTA'; elH.textContent = ''; elM.textContent = ''; elS.textContent = '';
+    return;
+  }
+  elD.textContent = String(Math.floor(diff / 86400000)).padStart(2, '0');
+  elH.textContent = String(Math.floor((diff % 86400000) / 3600000)).padStart(2, '0');
+  elM.textContent = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+  elS.textContent = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+}
+updateCountdown();
+setInterval(updateCountdown, 1000);
+
+/* ════════════════════════════════════════════════════════
+   STAT BARS — animated on team section show
+════════════════════════════════════════════════════════ */
+function animateStatBars() {
+  document.querySelectorAll('.stat-fill[data-pct]').forEach(el => {
+    setTimeout(() => { el.style.width = el.getAttribute('data-pct') + '%'; }, 150);
+  });
+}
+const teamSec = document.getElementById('s-team');
+if (teamSec) {
+  new MutationObserver(muts => {
+    muts.forEach(m => { if (m.target.classList.contains('active')) animateStatBars(); });
+  }).observe(teamSec, { attributes: true, attributeFilter: ['class'] });
+}
+
+/* ════════════════════════════════════════════════════════
+   LEAFLET MAP — lazy, guarded, robust
+════════════════════════════════════════════════════════ */
+let _mapInstance = null;
+
+function initMap() {
+  // Guard: only init once
+  if (_mapInstance) { _mapInstance.invalidateSize(); return; }
+  // Guard: check library loaded
+  if (typeof L === 'undefined') {
+    document.getElementById('map-container').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:0.7rem;color:var(--sand-dim);">Mappa non disponibile — verifica connessione internet</div>';
+    return;
+  }
+
+  try {
+    // ── Inject dark popup CSS ──────────────────────────────
+    const leafletPopupStyle = document.createElement('style');
+    leafletPopupStyle.textContent = `
+      .dark-popup .leaflet-popup-content-wrapper {
+        background:#1D2B1F; color:#D6C7A1;
+        border:1px solid rgba(214,199,161,0.18);
+        border-radius:10px; padding:0;
+        box-shadow:0 8px 32px rgba(0,0,0,0.7);
+      }
+      .dark-popup .leaflet-popup-tip { background:#1D2B1F; }
+      .dark-popup .leaflet-popup-content { margin:0; }
+      .leaflet-popup-close-button { color:rgba(214,199,161,0.5)!important; top:8px!important; right:8px!important; font-size:16px!important; }
+      .leaflet-control-zoom a { background:#1D2B1F!important; color:#D6C7A1!important; border-color:rgba(214,199,161,0.15)!important; }
+      .leaflet-control-zoom a:hover { background:#2E3B2F!important; }
+      .leaflet-control-attribution { background:rgba(17,17,17,0.7)!important; color:rgba(214,199,161,0.35)!important; font-size:9px!important; }
+      .leaflet-control-attribution a { color:rgba(214,199,161,0.5)!important; }
+    `;
+    document.head.appendChild(leafletPopupStyle);
+
+    // ── Create map ────────────────────────────────────────
+    _mapInstance = L.map('map-container', {
+      center: [43.895, 11.717],
+      zoom: 13,
+      zoomControl: true,
+      scrollWheelZoom: true
+    });
+
+    // Dark tiles — CartoDB Dark Matter
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://carto.com/">CartoDB</a>',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(_mapInstance);
+
+    // ── Trail — REAL OSM data via Overpass API with fallback ──────────────
+    // Fallback approximate coords (used instantly; replaced if OSM loads)
+    const APPROX_MAIN = [
+      [43.8893,11.7253],[43.8897,11.7246],[43.8901,11.7239],[43.8906,11.7231],
+      [43.8910,11.7225],[43.8916,11.7218],[43.8921,11.7210],[43.8926,11.7204],
+      [43.8931,11.7197],[43.8937,11.7190],[43.8943,11.7184],[43.8949,11.7178],
+      [43.8954,11.7173],[43.8959,11.7168],[43.8964,11.7163],[43.8970,11.7157],
+      [43.8975,11.7151],[43.8980,11.7145],[43.8985,11.7136],[43.8990,11.7127],
+      [43.8995,11.7117],[43.9000,11.7108],[43.9005,11.7099],[43.9009,11.7094],
+      [43.9012,11.7089]
+    ];
+    const APPROX_FALTERONA = [
+      [43.9012,11.7089],[43.9010,11.7108],[43.9006,11.7130],
+      [43.9002,11.7156],[43.8999,11.7178],[43.8998,11.7201]
+    ];
+
+    // Draw fallback immediately so map is never empty
+    let mainRoute = L.polyline(APPROX_MAIN, {
+      color: '#FF7A00', weight: 5, opacity: 0.9,
+      lineJoin: 'round', lineCap: 'round'
+    }).addTo(_mapInstance);
+    let faltRoute = L.polyline(APPROX_FALTERONA, {
+      color: '#B08AFF', weight: 3, opacity: 0.7,
+      dashArray: '7,5', lineJoin: 'round'
+    }).addTo(_mapInstance);
+
+    _mapInstance.fitBounds(mainRoute.getBounds(), { padding: [36, 36] });
+
+    // Add a small status label on the map
+    const trailLabel = L.control({ position: 'bottomleft' });
+    trailLabel.onAdd = () => {
+      const div = L.DomUtil.create('div');
+      div.id = 'trail-status';
+      div.style.cssText = 'font-family:"IBM Plex Mono",monospace;font-size:9px;background:rgba(17,17,17,0.85);color:rgba(214,199,161,0.55);padding:4px 8px;border-radius:4px;letter-spacing:0.06em;';
+      div.textContent = 'SENTIERO: caricamento OSM...';
+      return div;
+    };
+    trailLabel.addTo(_mapInstance);
+
+    // ── Fetch REAL trail from OpenStreetMap Overpass API ──────────────────
+    // Bounding box covers Passo della Calla → Monte Falco → Falterona
+    // Query: hiking paths + tracks in the ridge area
+    (async () => {
+      const BBOX = '43.884,11.700,43.907,11.732'; // south,west,north,east
+      const q = `[out:json][timeout:25];
+(
+  way["highway"~"path|track"]["access"!="private"](${BBOX});
+  relation["route"="hiking"](${BBOX});
+);
+(._;>;);
+out geom qt;`;
+
+      try {
+        const res = await fetch(
+          'https://overpass-api.de/api/interpreter',
+          { method: 'POST', body: 'data=' + encodeURIComponent(q) }
+        );
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const osm = await res.json();
+
+        // Collect all way geometries from the response
+        const waysById = {};
+        osm.elements.forEach(el => {
+          if (el.type === 'way' && el.geometry && el.geometry.length > 1) {
+            waysById[el.id] = el;
+          }
+        });
+
+        // Separate hiking paths from roads
+        const hikingWays   = [];
+        const secondaryWays = [];
+        Object.values(waysById).forEach(way => {
+          const t = way.tags || {};
+          const hw = t.highway || '';
+          const isPath  = hw === 'path';
+          const isTrack = hw === 'track';
+          const isRoute = t.route === 'hiking' || t.network === 'nwn' || t.network === 'lwn';
+          const hasGEA  = (t.name || '').toLowerCase().includes('gea') ||
+                          (t.ref  || '').includes('00') ||
+                          (t.operator || '').toLowerCase().includes('cai');
+          if (isPath || isRoute || hasGEA) {
+            hikingWays.push(way);
+          } else if (isTrack) {
+            secondaryWays.push(way);
+          }
+        });
+
+        const drawableWays = hikingWays.length > 0 ? hikingWays : secondaryWays;
+
+        if (drawableWays.length > 0) {
+          // Remove fallback approximations
+          _mapInstance.removeLayer(mainRoute);
+          _mapInstance.removeLayer(faltRoute);
+
+          // Draw every OSM way — these are REAL GPS coordinates from the field
+          const allLatLngs = [];
+          drawableWays.forEach(way => {
+            const coords = way.geometry.map(pt => [pt.lat, pt.lon]);
+            allLatLngs.push(...coords);
+            L.polyline(coords, {
+              color: '#FF7A00', weight: 5, opacity: 0.9,
+              lineJoin: 'round', lineCap: 'round'
+            }).addTo(_mapInstance);
+          });
+
+          // Re-fit bounds to real trail extent
+          if (allLatLngs.length > 0) {
+            _mapInstance.fitBounds(L.latLngBounds(allLatLngs), { padding: [36, 36] });
+          }
+
+          const lbl = document.getElementById('trail-status');
+          if (lbl) lbl.textContent = `SENTIERO: dati OSM reali (${drawableWays.length} segmenti)`;
+        } else {
+          const lbl = document.getElementById('trail-status');
+          if (lbl) lbl.textContent = 'SENTIERO: approssimazione (OSM senza dati in bbox)';
+        }
+
+      } catch (err) {
+        console.warn('Overpass API non raggiungibile, uso approssimazione:', err.message);
+        const lbl = document.getElementById('trail-status');
+        if (lbl) lbl.textContent = 'SENTIERO: approssimazione (Overpass offline)';
+      }
+    })();
+
+    // ── Named waypoint markers ────────────────────────────
+    const waypoints = [
+      { latlng: [43.8893, 11.7253], name: 'PARTENZA', sub: 'Passo della Calla — 1296m', time: '16:00', signal: 'Buono', risk: 'Basso', diff: 'E', col: '#4DBFCF', size: 14 },
+      { latlng: [43.8929, 11.7198], name: 'FONTE BORBOTTO', sub: 'Pian delle Fontanelle — 1350m', time: '16:30', signal: 'Parziale', risk: 'Basso', diff: 'E', col: '#5DBF7A', size: 12 },
+      { latlng: [43.8977, 11.7152], name: 'CRINALE GEA 00', sub: 'Crinale principale — 1500m', time: '17:00', signal: 'Parziale', risk: 'Medio', diff: 'E', col: '#FF7A00', size: 12 },
+      { latlng: [43.9012, 11.7089], name: 'MONTE FALCO', sub: 'Vetta 1658m — bivacco', time: '17:30', signal: 'Parziale TIM', risk: 'Alto', diff: 'EE', col: '#FF7A00', size: 18 },
+      { latlng: [43.8998, 11.7201], name: 'M. FALTERONA', sub: 'Fonte del Capo d\'Arno — 1654m', time: '+1h opt.', signal: 'Assente', risk: 'Medio', diff: 'E', col: '#B08AFF', size: 12 }
+    ];
+
+    waypoints.forEach(w => {
+      const pulse = w.size === 18
+        ? `<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:${w.size+10}px;height:${w.size+10}px;border-radius:50%;border:2px solid ${w.col};opacity:0.4;animation:leaflet-pulse 2s ease infinite;"></div>` : '';
+      const icon = L.divIcon({
+        html: `<div style="position:relative;width:${w.size}px;height:${w.size}px;">
+          ${pulse}
+          <div style="width:${w.size}px;height:${w.size}px;border-radius:50%;background:${w.col};border:2.5px solid rgba(17,17,17,0.9);box-shadow:0 0 14px ${w.col}99;position:relative;z-index:1;"></div>
+        </div>`,
+        className: '',
+        iconSize: [w.size, w.size],
+        iconAnchor: [w.size / 2, w.size / 2]
+      });
+      L.marker(w.latlng, { icon })
+        .bindPopup(`
+          <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;min-width:190px;padding:14px 16px;">
+            <div style="color:${w.col};font-weight:700;font-size:12px;margin-bottom:5px;letter-spacing:0.06em;">${w.name}</div>
+            <div style="color:#D6C7A1;margin-bottom:8px;font-size:11px;">${w.sub}</div>
+            <div style="color:rgba(214,199,161,0.6);font-size:10px;line-height:2;">
+              Orario stimato: ${w.time}<br>
+              Difficolta': ${w.diff}<br>
+              Segnale GSM: ${w.signal}<br>
+              Rischio meteo: ${w.risk}
+            </div>
+          </div>
+        `, { className: 'dark-popup', maxWidth: 240 })
+        .addTo(_mapInstance);
+    });
+
+    // CSS for pulsing summit marker
+    const pulseStyle = document.createElement('style');
+    pulseStyle.textContent = `@keyframes leaflet-pulse { 0%,100%{transform:translate(-50%,-50%) scale(1);opacity:0.4} 50%{transform:translate(-50%,-50%) scale(1.5);opacity:0} }`;
+    document.head.appendChild(pulseStyle);
+
+  } catch (err) {
+    console.error('Map init error:', err);
+    const mc = document.getElementById('map-container');
+    if (mc) mc.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-family:var(--mono);font-size:0.7rem;color:var(--sand-dim);">Errore mappa: ${err.message}</div>`;
+  }
+}
+
+/* ════════════════════════════════════════════════════════
+   CHART.JS ELEVATION — lazy, guarded (canvas was display:none at load)
+════════════════════════════════════════════════════════ */
+function initElevChart() {
+  if (elevChartInstance) return; // already drawn
+  if (typeof Chart === 'undefined') return;
+
+  const canvas = document.getElementById('elevChart');
+  if (!canvas) return;
+
+  const ctx2d   = canvas.getContext('2d');
+  const grad    = ctx2d.createLinearGradient(0, 0, 0, 160);
+  grad.addColorStop(0, 'rgba(255,122,0,0.4)');
+  grad.addColorStop(1, 'rgba(255,122,0,0.0)');
+
+  elevChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: ['0 km\n1296m', '0.7 km', '1.5 km\n1350m', '2.2 km', '2.8 km', '3.4 km\n1500m', '3.9 km', '4.5 km', '5.0 km\n1658m', '5.8 km\n1654m'],
+      datasets: [{
+        label: 'Quota',
+        data: [1296, 1315, 1350, 1395, 1445, 1500, 1545, 1600, 1658, 1654],
+        borderColor: '#FF7A00',
+        borderWidth: 2.5,
+        backgroundColor: grad,
+        fill: true,
+        tension: 0.42,
+        pointBackgroundColor: ['#4DBFCF','#888','#5DBF7A','#888','#888','#FF7A00','#888','#888','#FF7A00','#B08AFF'],
+        pointRadius:          [7, 3, 7, 3, 3, 6, 3, 3, 10, 7],
+        pointHoverRadius: 9
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 900, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(29,43,31,0.96)',
+          titleColor: '#FF7A00',
+          bodyColor: '#D6C7A1',
+          borderColor: 'rgba(255,122,0,0.3)',
+          borderWidth: 1,
+          titleFont: { family: "'IBM Plex Mono'", size: 11, weight: '600' },
+          bodyFont:  { family: "'IBM Plex Mono'", size: 11 },
+          padding: 10,
+          callbacks: { label: c => ` ${c.raw} m s.l.m.` }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: 'rgba(214,199,161,0.4)', font: { family: "'IBM Plex Mono'", size: 8 }, maxRotation: 0 },
+          grid:  { color: 'rgba(214,199,161,0.05)' },
+          border:{ color: 'rgba(214,199,161,0.1)'  }
+        },
+        y: {
+          min: 1230, max: 1700,
+          ticks: { color: 'rgba(214,199,161,0.4)', font: { family: "'IBM Plex Mono'", size: 9 }, callback: v => v + 'm', stepSize: 100 },
+          grid:  { color: 'rgba(214,199,161,0.05)' },
+          border:{ color: 'rgba(214,199,161,0.1)'  }
+        }
+      }
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════════
+   WEATHER — Open-Meteo API (crinale 1500m)
+════════════════════════════════════════════════════════ */
+(async function fetchWeather() {
+  const el = document.getElementById('weatherContent');
+  if (!el) return;
+  const WX = {
+    0:'Sereno',1:'Prevalentemente sereno',2:'Parzialmente nuvoloso',3:'Nuvoloso',
+    45:'Nebbia',48:'Nebbia con brina depositata',
+    51:'Pioggerella leggera',53:'Pioggerella',55:'Pioggerella intensa',
+    61:'Pioggia leggera',63:'Pioggia',65:'Pioggia intensa',
+    71:'Neve leggera',73:'Neve',75:'Neve abbondante',
+    80:'Rovesci leggeri',81:'Rovesci',82:'Rovesci intensi',
+    95:'Temporale',96:'Temporale con grandine',99:'Temporale forte'
+  };
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/forecast?latitude=43.8978&longitude=11.7156&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,precipitation&daily=sunrise,sunset&timezone=Europe%2FRome&forecast_days=1');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    const c = j.current, d = j.daily;
+    const code = c.weather_code;
+    const statusCol = code >= 80 ? 'var(--red)' : code >= 45 ? 'var(--fire)' : 'var(--green)';
+    const statusTxt = code <= 2 ? 'Ottimo' : code <= 45 ? 'Buono' : code <= 65 ? 'Attenzione' : 'PERICOLO';
+    el.innerHTML = `
+      <div class="wx-row">
+        <div class="wx-temp">${Math.round(c.temperature_2m)}°C</div>
+        <div>
+          <div style="font-size:0.88rem;color:var(--sand);margin-bottom:2px;">${WX[code] || 'N/D'}</div>
+          <div class="wx-desc">Percepita: ${Math.round(c.apparent_temperature)}°C</div>
+          <div class="wx-desc">Prec.: ${c.precipitation} mm</div>
+        </div>
+      </div>
+      <div class="wx-grid">
+        <div class="wx-cell"><div class="wx-cell-lbl">Vento</div><div class="wx-cell-val">${Math.round(c.wind_speed_10m)} km/h</div></div>
+        <div class="wx-cell"><div class="wx-cell-lbl">Umidita'</div><div class="wx-cell-val">${c.relative_humidity_2m}%</div></div>
+        <div class="wx-cell"><div class="wx-cell-lbl">Condizioni</div><div class="wx-cell-val" style="color:${statusCol}">${statusTxt}</div></div>
+      </div>
+      <div class="wx-grid" style="margin-top:8px;">
+        <div class="wx-cell"><div class="wx-cell-lbl">Alba</div><div class="wx-cell-val">${d.sunrise[0].split('T')[1]}</div></div>
+        <div class="wx-cell"><div class="wx-cell-lbl">Tramonto</div><div class="wx-cell-val">${d.sunset[0].split('T')[1]}</div></div>
+        <div class="wx-cell"><div class="wx-cell-lbl">Aggiornato</div><div class="wx-cell-val" style="font-size:0.62rem;">${new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})}</div></div>
+      </div>
+      <div class="wx-loc">Crinale GEA 00 · 43.8978°N 11.7156°E · quota ~1500m · fonte: Open-Meteo</div>
+    `;
+  } catch(e) {
+    el.innerHTML = `<div style="font-family:var(--mono);font-size:0.7rem;color:var(--sand-dim);padding:16px 0;">
+      Dati meteo non disponibili (${e.message}).<br>
+      Consulta <a href="https://www.arpae.it/it/meteo" target="_blank" style="color:var(--fire);">ARPAE Emilia-Romagna</a> per le previsioni aggiornate sul crinale.
+    </div>`;
+  }
+})();
+</script>
+
+</body>
+</html>
